@@ -1,7 +1,7 @@
 {
     "name": "concept-labs/di",
-    "description": "(C)oncept-Labs Cache",
-    "keywords": ["php","di", "dependency injection", "factory"],
+    "description": "(C)oncept-Labs Dependency Injection pack",
+    "keywords": ["php","di", "dependency injection", "factory", "container", "config"],
     "license": "MIT",
     "authors": [
         {
@@ -13,8 +13,7 @@
         "php": "^7.2|^7.4|^8.0|^8.2",
         "concept-labs/factory": "^1",
         "concept-labs/config": "^1",
-        "concept-labs/container": "^1",
-        "psr/container": "^1"
+        "concept-labs/container": "^1"
     },
     "autoload": {
         "psr-4": {
