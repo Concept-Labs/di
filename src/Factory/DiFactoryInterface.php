@@ -4,6 +4,7 @@ namespace Concept\Di\Factory;
 
 use Psr\Container\ContainerInterface;
 use Concept\Config\ConfigInterface;
+use Concept\Factory\FactoryInterface;
 
 interface DiFactoryInterface extends FactoryInterface
 {
@@ -24,6 +25,4 @@ interface DiFactoryInterface extends FactoryInterface
     public function withContainer(ContainerInterface $container): self;
     public function withConfig(ConfigInterface $config): self;
 
-    public function withServiceId(string $serviceId): self;
-    public function withParameters(...$parameters): self;
 }
