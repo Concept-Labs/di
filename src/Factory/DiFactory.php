@@ -325,7 +325,7 @@ class DiFactory implements DiFactoryInterface
 
             foreach ($modules as $module) {
                 $modulePath = $this->getConfig()
-                    ->createPath(DiFactoryInterface::NODE_DEPENDENCY, $module);
+                    ->createPath(DiFactoryInterface::NODE_DEPENDENCIES, $module);
 
                 if (!$this->getConfig()->has($modulePath)) {
                     throw new LogicException(
