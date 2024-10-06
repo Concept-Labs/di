@@ -8,8 +8,12 @@ use Concept\Factory\FactoryInterface;
 
 interface DiFactoryInterface extends FactoryInterface
 {
-    const NODE_PREFERENCE = 'preference';
     const NODE_DI_CONFIG = 'di';
+    //const NODE_MODULE = 'module';
+    const NODE_DEPENDENCY = 'dependency';
+    const NODE_DEPENDS = 'depends';
+    const NODE_NAMESPACE = 'namespace';
+    const NODE_PREFERENCE = 'preference';
     const NODE_CLASS = 'class';
     const NODE_REFERENCE = 'reference';
     const NODE_SINGLETON = 'singleton';

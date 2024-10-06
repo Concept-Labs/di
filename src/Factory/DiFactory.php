@@ -21,7 +21,7 @@ class DiFactory implements DiFactoryInterface
     protected ?ReflectionClass $serviceReflection = null;
     protected ?ConfigInterface $serviceConfig = null;
 
-    protected array $dependencyStack = [];
+    protected array $serviceStack = [];
     protected ?string $resolvedServiceClass = null;
     protected $service = null;
 
@@ -33,7 +33,7 @@ class DiFactory implements DiFactoryInterface
 
     public function reset()
     {
-        $excluded = ['config', 'container', 'dependencyStack'];
+        $excluded = ['config', 'container', 'serviceStack'];
 
         foreach (get_object_vars($this) as $property => $value) {
             if (!in_array($property, $excluded)) {
@@ -97,7 +97,7 @@ class DiFactory implements DiFactoryInterface
             throw new InvalidArgumentException('Service ID is not set');
         }
 
-        if ($this->isInDependencyStack($this->getServiceId())) {
+        if ($this->isInServiceStack($this->getServiceId())) {
             throw new LogicException(
                 sprintf(_('Circular dependency detected for service "%s"'), $this->getServiceId())
             );
@@ -130,7 +130,7 @@ class DiFactory implements DiFactoryInterface
     protected function createService(): self
     {
         $this
-            ->addDependencyStack($this->getServiceId())
+            ->addServiceStack($this->getServiceId())
             ->applyConfigContext()
             ->applyServiceRuntimeContext();
 
@@ -159,7 +159,7 @@ class DiFactory implements DiFactoryInterface
             ->diAddons()
             ->applyServiceLifeCycle()
             ->restoreConfigContext()
-            ->removeDependencyStack($this->getServiceId());
+            ->removeServiceStack($this->getServiceId());
 
         return $this;
     }
@@ -209,8 +209,12 @@ class DiFactory implements DiFactoryInterface
 
     protected function applyConfigContext(): self
     {
-        $this->getConfig()
-            ->pushState();
+        $this
+            ->getConfig()
+                ->pushState();
+        
+        $this->applyNamespaceContext();
+            
 
         $preferencePath = $this->getConfig()
             ->createPath(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
@@ -234,13 +238,119 @@ class DiFactory implements DiFactoryInterface
         /**
          * Preference config
          */
-        $config = $this->getConfig()
-            ->fromPath($preferencePath);
+        $config = $this
+            ->getConfig()
+                ->fromPath($preferencePath);
 
-        if ($config->has(DiFactoryInterface::NODE_REFERENCE)) {
+        /**
+         * Apply dependency context
+         */
+        $this->applyDependencyContext($config);
+
+        /**
+         * Apply reference context
+         */
+        $this->applyReferenceContext($config);
+
+        /**
+         * Apply sub DI context
+         */
+        $this->applySubDiContext($config);
+
+        if (!$config->has(DiFactoryInterface::NODE_CLASS)) {
             /**
-             * Resolve reference
+             * No class found, use the service ID
              */
+            $config->merge(
+                [
+                    DiFactoryInterface::NODE_CLASS => $this->getServiceId()
+                ]
+            );
+        }
+
+
+        /**
+         * Apply resolved preference config to the factory config
+         */
+        $this
+            ->getConfig()
+                ->merge([
+                        DiFactoryInterface::NODE_PREFERENCE => [
+                            $this->getServiceId() => $config->asArray()
+                        ]
+                ]);
+        
+        return $this;
+    }
+
+    protected function applyNamespaceContext(): self
+    {
+        $namespaceParts = explode('\\', $this->getServiceId());
+        $namespace = '';
+        while (count($namespaceParts) > 0) {
+            $namespace = join('\\', [$namespace, array_shift($namespaceParts)]);
+            $namespacePath = $this->getConfig()
+                ->createPath(DiFactoryInterface::NODE_NAMESPACE, $namespace);
+            
+            if ($this->getConfig()->has($namespacePath) && !$this->getConfig()->get($namespacePath, 'applied')) 
+            {
+                $namespaceConfig = $this->getConfig()
+                    ->fromPath($namespacePath);
+                
+                /**
+                 * Apply dependency context recursively
+                 */
+                $this->applyDependencyContext($namespaceConfig);
+
+                $this->getConfig()
+                    ->merge($namespaceConfig->asArray());
+                
+                $this->getConfig()
+                    ->set($namespacePath.'.applied', true);
+            }
+        }
+
+        return $this;
+    }
+
+    protected function applyDependencyContext(ConfigInterface $config): self
+    {
+        if ($config->has(DiFactoryInterface::NODE_DEPENDS)) {
+            $modules = $config
+                ->get(DiFactoryInterface::NODE_DEPENDS);
+            
+            if (!is_array($modules)) {
+                $modules = [$modules];
+            }
+
+            foreach ($modules as $module) {
+                $modulePath = $this->getConfig()
+                    ->createPath(DiFactoryInterface::NODE_DEPENDENCY, $module);
+
+                if (!$this->getConfig()->has($modulePath)) {
+                    throw new LogicException(
+                        sprintf(_('Module path not found "%s"'), $modulePath)
+                    );
+                }
+
+                $moduleConfig = $this->getConfig()
+                    ->fromPath($modulePath);
+                
+                $this->applyDependencyContext($moduleConfig);
+
+                $this->getConfig()
+                    ->merge($moduleConfig->asArray());
+            }
+
+            $config->unset(DiFactoryInterface::NODE_DEPENDS);
+        }
+       
+        return $this;
+    }
+
+    protected function applyReferenceContext(ConfigInterface $config): self
+    {
+        if ($config->has(DiFactoryInterface::NODE_REFERENCE)) {
             $referencePath = $this->getConfig()
                 ->createPath(DiFactoryInterface::NODE_PREFERENCE, $config->get(DiFactoryInterface::NODE_REFERENCE));
 
@@ -261,10 +371,11 @@ class DiFactory implements DiFactoryInterface
             $config->unset(DiFactoryInterface::NODE_REFERENCE);
         }
 
-        /**
-         * If the preference config has a DI config, merge it
-         * This means overriding the Factory config with the Service DI config
-         */
+        return $this;
+    }
+
+    protected function applySubDiContext(ConfigInterface $config): self
+    {
         if ($config->has(DiFactoryInterface::NODE_DI_CONFIG)) {
             $this->getConfig()
                 ->merge(
@@ -272,31 +383,6 @@ class DiFactory implements DiFactoryInterface
                 );
         }
 
-        if (!$config->has(DiFactoryInterface::NODE_CLASS)) {
-            /**
-             * No class found, use the service ID
-             */
-            $config->merge(
-                [
-                    DiFactoryInterface::NODE_CLASS => $this->getServiceId()
-                ]
-            );
-        }
-
-
-        /**
-         * Apply resolved preference config to the factory config
-         */
-        $this->getConfig()
-            ->merge([
-                    DiFactoryInterface::NODE_PREFERENCE => [
-                        $this->getServiceId() => $config->asArray()
-                    ]
-            ]);
-        
-        /**
-         * @todo hash for singleton
-         */
         return $this;
     }
 
@@ -530,21 +616,21 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-    protected function addDependencyStack(string $serviceId): self
+    protected function addServiceStack(string $serviceId): self
     {
-        $this->dependencyStack[$serviceId] = true;
+        $this->serviceStack[$serviceId] = true;
 
         return $this;
     }
 
-    protected function isInDependencyStack(string $serviceId): bool
+    protected function isInServiceStack(string $serviceId): bool
     {
-        return array_key_exists($serviceId, $this->dependencyStack);
+        return array_key_exists($serviceId, $this->serviceStack);
     }
 
-    protected function removeDependencyStack(string $serviceId): self
+    protected function removeServiceStack(string $serviceId): self
     {
-        unset($this->dependencyStack[$serviceId]);
+        unset($this->serviceStack[$serviceId]);
 
         return $this;
     }
