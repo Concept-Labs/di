@@ -10,7 +10,7 @@ interface DiFactoryInterface extends FactoryInterface
 {
     const NODE_DI_CONFIG = 'di';
     //const NODE_MODULE = 'module';
-    const NODE_DEPENDENCIES = 'dependencies';
+    const NODE_MODULE = 'module';
     const NODE_DEPENDS = 'depends';
     const NODE_NAMESPACE = 'namespace';
     const NODE_PREFERENCE = 'preference';

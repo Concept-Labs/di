@@ -106,8 +106,12 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-    public function create(string $serviceId, ...$parameters): object
+    public function create(?string $serviceId = null, ...$parameters): object
     {
+        if (null === $serviceId) {
+            throw new InvalidArgumentException('Service ID is not set');
+        }
+
         /**
          * @todo: singleton should be here?
          */
@@ -224,10 +228,19 @@ class DiFactory implements DiFactoryInterface
              * No preference found, return the default configuration
              * Service ID is the class name
              */
+            $serviceId = $this->getServiceId();
+
+            /**
+             * Hidden egg
+             * Cut the interface suffix if it is set in the config
+             */
+            if ($this->getConfig()->get('di.cut-interface') && preg_match('/(.*)?Interface$/', $serviceId)) {
+                $serviceId = preg_replace('/(.*)?Interface$/', '$1', $serviceId);
+            }
             $this->getConfig()->merge([
                 DiFactoryInterface::NODE_PREFERENCE => [
                     $this->getServiceId() => [
-                        DiFactoryInterface::NODE_CLASS => $this->getServiceId()
+                        DiFactoryInterface::NODE_CLASS => $serviceId                        
                     ]
                 ]
             ]);
@@ -325,7 +338,7 @@ class DiFactory implements DiFactoryInterface
 
             foreach ($modules as $module) {
                 $modulePath = $this->getConfig()
-                    ->createPath(DiFactoryInterface::NODE_DEPENDENCIES, $module);
+                    ->createPath(DiFactoryInterface::NODE_MODULE, $module);
 
                 if (!$this->getConfig()->has($modulePath)) {
                     throw new LogicException(

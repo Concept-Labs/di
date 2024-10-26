@@ -1,0 +1,17 @@
+{
+    "di": {
+        "module": {
+            "concept-labs/di": {
+                "preference": {
+                    "Concept\\Factory\\FactoryInterface": {
+                        "class": "Concept\\Di\\Factory\\DiFactory"
+                    },
+                    "Concept\\Di\\Factory\\DiFactory": {
+                        "class": "Concept\\Di\\Factory\\DiFactory",
+                        "singleton": true
+                    }
+                }
+            }
+        }
+    }
+}
