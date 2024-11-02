@@ -8,20 +8,21 @@ use ReflectionNamedType;
 use Psr\Container\ContainerInterface;
 use Concept\Config\ConfigInterface;
 use Concept\Di\Factory\Exception\LogicException;
-use Concept\Di\Factory\Exception\InvalidArgumentException;
+use Concept\Di\Factory\Exception\RuntimeException;
 
 class DiFactory implements DiFactoryInterface
 {
     protected ?ConfigInterface $config = null;
     protected ?ContainerInterface $container = null;
 
-    protected ?string $serviceId = null;
-    protected ?array $parameters = null;
-
     protected ?ReflectionClass $serviceReflection = null;
     protected ?ConfigInterface $serviceConfig = null;
 
+    protected ?string $serviceId = null;
+    protected ?array $parameters = null;
+
     protected array $serviceStack = [];
+    //private array $dependencyStack = [];
     protected ?string $resolvedServiceClass = null;
     protected $service = null;
 
@@ -33,7 +34,7 @@ class DiFactory implements DiFactoryInterface
 
     public function reset()
     {
-        $excluded = ['config', 'container', 'serviceStack'];
+        $excluded = ['config', 'container', 'serviceStack', 'dependencyStack'];
 
         foreach (get_object_vars($this) as $property => $value) {
             if (!in_array($property, $excluded)) {
@@ -71,7 +72,7 @@ class DiFactory implements DiFactoryInterface
     protected function getConfig(): ConfigInterface
     {
         if (null === $this->config) {
-            throw new \RuntimeException('Config is not set');
+            throw new RuntimeException('Config is not set');
         }
 
         return $this->config;// ?? $this->create(ConfigInterface::class);
@@ -79,7 +80,17 @@ class DiFactory implements DiFactoryInterface
 
     protected function getServiceId(): string
     {
+        if (null === $this->serviceId) {
+            throw new RuntimeException('Service ID is not set');
+        }
         return $this->serviceId;
+    }
+
+    protected function setServiceId(string $serviceId): self
+    {
+        $this->serviceId = $serviceId;
+
+        return $this;
     }
 
     protected function getParameters(): ?array
@@ -87,16 +98,36 @@ class DiFactory implements DiFactoryInterface
         return $this->parameters;
     }
 
-    protected function assertState(): self
+    protected function setParameters(array $parameters): self
     {
-        // if (null === $this->container) {
-        //     throw new InvalidArgumentException('Container is not set');
-        // }
+        $this->parameters = $parameters;
 
-        if (null === $this->serviceId) {
-            throw new InvalidArgumentException('Service ID is not set');
+        return $this;
+    }
+
+    /**
+     * Get the service instance
+     * 
+     * @return mixed
+     */
+    protected function getService()
+    {
+        if (null === $this->service) {
+            throw new LogicException('Service is not created yet');
         }
 
+        return $this->service;
+    }
+
+    protected function setService($service): self
+    {
+        $this->service = $service;
+
+        return $this;
+    }
+
+    protected function assertState(): self
+    {
         if ($this->isInServiceStack($this->getServiceId())) {
             throw new LogicException(
                 sprintf(_('Circular dependency detected for service "%s"'), $this->getServiceId())
@@ -108,9 +139,9 @@ class DiFactory implements DiFactoryInterface
 
     public function create(?string $serviceId = null, ...$parameters): object
     {
-        if (null === $serviceId) {
-            throw new InvalidArgumentException('Service ID is not set');
-        }
+        $this->reset();
+        $this->setServiceId($serviceId);
+        $this->setParameters($parameters);
 
         /**
          * @todo: singleton should be here?
@@ -119,30 +150,72 @@ class DiFactory implements DiFactoryInterface
             return $this->getContainer()->get($serviceId);
         }
 
-        $this->reset();
-
-        $this->serviceId = $serviceId;
-        $this->parameters = $parameters;
-
         $this
+            /**
+             * Assert factory state is valid
+             */
             ->assertState()
-            ->createService();
+            /**
+             * Avoid circular dependencies
+             */
+            ->addServiceStack($this->getServiceId())
+            /**
+             * Apply config context
+             */
+            ->applyConfigContext()
+            /**
+             * Apply Runtime config context
+             */
+            ->applyServiceRuntimeContext()
+            /**
+             * CREATE SERVICE INSTANCE
+             */
+            ->instantiate()
+            /**
+             * Invoke DI methods
+             */
+            ->invokeDi()
+            /**
+             * Invoke DI methods using attributes
+             */
+            ->invokeDiAttribute()
+            /**
+             * Apply service life cycle
+             */
+            ->applyServiceLifeCycle()
+            /**
+             * Restore config context
+             */
+            ->restoreConfigContext()
+            /**
+             * Remove service id from the circular dependency stack
+             */
+            ->removeServiceStack($this->getServiceId());
 
         return $this->getService();
     }
 
-    protected function createService(): self
+    /**
+     * Create service instance
+     * Use reflection
+     * If the class is instantiable without constructor, create the instance
+     * If the class has a constructor, resolve the parameters
+     * If the class is not instantiable, throw an exception
+     * 
+     * @return self
+     */
+    protected function instantiate(): self
     {
-        $this
-            ->addServiceStack($this->getServiceId())
-            ->applyConfigContext()
-            ->applyServiceRuntimeContext();
-
         $reflection = $this->getServiceReflection();
 
         if (!$reflection->isInstantiable()) {
             throw new LogicException(
-                sprintf(_('Class "%s" is not instantiable'), $this->getServiceClass())
+                sprintf(
+                    _('Class "%s" is not instantiable. Check Configuration (%s): %s'), 
+                    $this->getServiceClass(), 
+                    $this->getServicePreferenceConfigPath(),
+                    $this->getServiceConfig()->asJson()
+                    )
             );
         }
 
@@ -150,50 +223,85 @@ class DiFactory implements DiFactoryInterface
             /**
              * No constructor
              */
-            $this->service = $reflection->newInstanceWithoutConstructor();
+            $this->setService(
+                $reflection->newInstanceWithoutConstructor()
+            );
         } else {
             /**
              * Constructor
              */
             $parameters = $this->resolveParameters($reflection->getConstructor());
-            $this->service = $reflection->newInstance(...$parameters);
+            $this->setService(
+                $reflection->newInstance(...$parameters)
+            );
         }
-
-        $this
-            ->diAddons()
-            ->applyServiceLifeCycle()
-            ->restoreConfigContext()
-            ->removeServiceStack($this->getServiceId());
 
         return $this;
     }
 
-    protected function diAddons(): self
+    /**
+     * Invoke DI methods
+     * Methods with the prefix DiFactoryInterface::DI_METHOD_PREFIX are invoked
+     * Resolve parameters for each method
+     * The method is invoked with resolved parameters
+     * 
+     * @return self
+     */
+    protected function invokeDi(): self
     {
         $reflection = $this->getServiceReflection();
 
-        if (!$reflection->hasMethod(DiFactoryInterface::DI_METHOD)) {
-            return $this;
+        foreach ($reflection->getMethods() as $method) {
+            if (strpos($method->getName(), DiFactoryInterface::DI_METHOD_PREFIX) === 0) {
+                $parameters = $this->resolveParameters($method);
+                $method->setAccessible(true);
+                $method->invoke($this->getService(), ...$parameters);
+            }
         }
-
-        $method = $reflection->getMethod(DiFactoryInterface::DI_METHOD);
-        $parameters = $this->resolveParameters($method);
-        $method->setAccessible(true);
-        $method->invoke($this->getService(), ...$parameters);
 
         return $this;
     }
 
+    /**
+     * Invoke DI methods using attributes
+     * Methods with the DiFactoryInterface::DI_ATTRIBUTE attribute are invoked
+     * Resolve parameters for each method
+     * The method is invoked with resolved parameters
+     * 
+     * @return self
+     */
+    protected function invokeDiAttribute(): self
+    {
+        $reflection = $this->getServiceReflection();
+        if (!method_exists($reflection, 'getAttributes')) {
+            // PHP < 8.0
+            return $this;
+        }
+
+        foreach ($reflection->getMethods() as $method) {
+            if ($method->getAttributes(DiFactoryInterface::DI_ATTRIBUTE)) {
+                $parameters = $this->resolveParameters($method);
+                $method->setAccessible(true);
+                $method->invoke($this->getService(), ...$parameters);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Apply service life cycle
+     * If the service is a singleton, attach it to the container
+     * 
+     * @return self
+     */
     protected function applyServiceLifeCycle(): self
     {
         $preferenceConfig = $this->getServiceConfig();
 
         if ($preferenceConfig->get(DiFactoryInterface::NODE_SINGLETON)) {
             if(null !== $container = $this->getContainer()) {
-                if (method_exists($container, 'attach')) {
-                    /**
-                     * @todo container interface?
-                     */
+                if ($container instanceof \Concept\Container\ContainerInterface) {
                     $container->attach($this->getServiceId(), $this->getService());
                 }
             }
@@ -202,41 +310,41 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-    protected function getService(): object
-    {
-        if (null === $this->service) {
-            throw new LogicException('Service is not created yet');
-        }
 
-        return $this->service;
-    }
-
+    /**
+     * Apply config context
+     * Apply the preference config to the factory config
+     * Apply the namespace config to the factory config
+     * Apply the dependency config to the factory config
+     * Apply the reference config to the factory config
+     * Apply the sub DI config to the factory config
+     * 
+     * @return self
+     */
     protected function applyConfigContext(): self
     {
-        $this
-            ->getConfig()
-                ->pushState();
+        /**
+         * Push (save) the current state of the config
+         */
+        $this->getConfig()->pushState();
+
         
-        $this->applyNamespaceContext();
-            
+        /**
+         * Apply namespace context first.
+         * Preference config may be located in the namespace node
+         */
+        $this->applyNamespaceContext();            
 
         $preferencePath = $this->getConfig()
-            ->createPath(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
+            ->path(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
 
         if (!$this->getConfig()->has($preferencePath)) {
             /**
-             * No preference found, return the default configuration
-             * Service ID is the class name
+             * No preference found, return the default configuration:
+             * Service ID as the class name
              */
             $serviceId = $this->getServiceId();
 
-            /**
-             * Hidden egg
-             * Cut the interface suffix if it is set in the config
-             */
-            if ($this->getConfig()->get('di.cut-interface') && preg_match('/(.*)?Interface$/', $serviceId)) {
-                $serviceId = preg_replace('/(.*)?Interface$/', '$1', $serviceId);
-            }
             $this->getConfig()->merge([
                 DiFactoryInterface::NODE_PREFERENCE => [
                     $this->getServiceId() => [
@@ -251,30 +359,31 @@ class DiFactory implements DiFactoryInterface
         /**
          * Preference config
          */
-        $config = $this
-            ->getConfig()
-                ->fromPath($preferencePath);
+        $preferenceConfig = $this->getServiceConfig();
+        // $this
+        //     ->getConfig()
+        //         ->fromPath($preferencePath);
 
         /**
          * Apply dependency context
          */
-        $this->applyDependencyContext($config);
+        $this->applyDependencyContext($preferenceConfig);
 
         /**
          * Apply reference context
          */
-        $this->applyReferenceContext($config);
+        $this->applyReferenceContext($preferenceConfig);
 
         /**
          * Apply sub DI context
          */
-        $this->applySubDiContext($config);
+        $this->applySubDiContext($preferenceConfig);
 
-        if (!$config->has(DiFactoryInterface::NODE_CLASS)) {
+        if (!$preferenceConfig->has(DiFactoryInterface::NODE_CLASS)) {
             /**
              * No class found, use the service ID
              */
-            $config->merge(
+            $preferenceConfig->merge(
                 [
                     DiFactoryInterface::NODE_CLASS => $this->getServiceId()
                 ]
@@ -289,7 +398,7 @@ class DiFactory implements DiFactoryInterface
             ->getConfig()
                 ->merge([
                         DiFactoryInterface::NODE_PREFERENCE => [
-                            $this->getServiceId() => $config->asArray()
+                            $this->getServiceId() => $preferenceConfig->asArray()
                         ]
                 ]);
         
@@ -353,6 +462,8 @@ class DiFactory implements DiFactoryInterface
 
                 $this->getConfig()
                     ->merge($moduleConfig->asArray());
+                
+            
             }
 
             $config->unset(DiFactoryInterface::NODE_DEPENDS);
@@ -420,38 +531,6 @@ class DiFactory implements DiFactoryInterface
             $this->getConfig()
                 ->merge($diConfig);
         }
-
-        /**
-         * Inline DI config file.
-         * This is a constant in the service class
-         * It must be a string
-         * The file is relative to the service class file
-         * The file must contain a valid JSON
-         * JSON structure is the same as the main config
-         */
-        if ($reflection->hasConstant(DiFactoryInterface::INLINE_DI_CONFIG_FILE_CONSTANT)) {
-            $diConfigFile = $reflection->getConstant(DiFactoryInterface::INLINE_DI_CONFIG_FILE_CONSTANT);
-            if (!is_string($diConfigFile)) {
-                throw new LogicException(
-                    sprintf(_('Constant "%s" must be a string'), DiFactoryInterface::INLINE_DI_CONFIG_FILE_CONSTANT)
-                );
-            }
-            
-            $file = join(
-                DIRECTORY_SEPARATOR,
-                [
-                    dirname($reflection->getFileName()),
-                    $diConfigFile
-                    ]
-            );
-            /**
-             * @todo:vg data provider
-             */
-            $diConfig = json_decode(file_get_contents($file), true);
-            
-            $this->getConfig()
-                ->merge($diConfig);
-        }
         
         /**
          * Inline DI config class method.
@@ -490,22 +569,58 @@ class DiFactory implements DiFactoryInterface
 
     protected function getServiceConfig(): ConfigInterface
     {
-        if (null === $this->serviceConfig) {
-            $this->serviceConfig = $this
+        //if (null === $this->serviceConfig) {
+            if (!$this->getConfig()->has($this->getServicePreferenceConfigPath())) {
+                throw new LogicException(
+                    sprintf(
+                        _('Service config path not found. Check Configuration (%s): %s'),
+                        $this->getServicePreferenceConfigPath(),
+                        $this->getConfig()->asJson()
+                    )
+                );
+            }
+
+            return $this
                 ->getConfig()
                     ->fromPath(
-                        $this->getConfig()
-                            ->createPath(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId())
+                        $this->getServicePreferenceConfigPath()
                     );
-        }
+        //}
 
-        return $this->serviceConfig;
+        // if (empty($this->serviceConfig)) {
+        //     throw new LogicException(
+        //         sprintf(
+        //             _('Service config not found. Check Configuration (%s): %s'),
+        //             $this->getServicePreferenceConfigPath(),
+        //             $this->getConfig()->asJson()
+        //         )
+        //     );
+        // }
+
+        //return $this->serviceConfig;
+    }
+
+    protected function getServicePreferenceConfigPath(): string
+    {
+        return $this->getConfig()
+            ->path(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
     }
 
     protected function getServiceClass(): string
     {
         if (null === $this->resolvedServiceClass) {
             $this->resolvedServiceClass = $this->getServiceConfig()->get(DiFactoryInterface::NODE_CLASS);
+        }
+
+        if (!class_exists($this->resolvedServiceClass)) {
+            throw new LogicException(
+                sprintf(
+                    _('Class "%s" not found. Check Configuration (%s): %s'), 
+                    $this->resolvedServiceClass, 
+                    $this->getServicePreferenceConfigPath(),
+                    $this->getServiceConfig()->asJson()
+                )
+            );
         }
 
         return $this->resolvedServiceClass;
@@ -609,6 +724,9 @@ class DiFactory implements DiFactoryInterface
              */
             $parameters[] = $this->getContainer()->has($typeName) 
                 ? $this->getContainer()->get($typeName) 
+                /**
+                 * Important to clone the factory for the new service to it has the same config but reseted state
+                 */
                 : (clone $this)->create($typeName);
                 /**
                  * clone or new self?
@@ -647,4 +765,23 @@ class DiFactory implements DiFactoryInterface
 
         return $this;
     }
+
+    // protected function addDependencyStack(string $dependency): self
+    // {
+    //     $this->dependencyStack[$dependency] = true;
+
+    //     return $this;
+    // }
+
+    // protected function isInDependencyStack(string $dependency): bool
+    // {
+    //     return array_key_exists($dependency, $this->dependencyStack);
+    // }
+
+    // protected function removeDependencyStack(string $dependency): self
+    // {
+    //     unset($this->dependencyStack[$dependency]);
+
+    //     return $this;
+    // }
 }

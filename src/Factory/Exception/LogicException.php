@@ -2,6 +2,6 @@
 namespace Concept\Di\Factory\Exception;
 
 
-class LogicException extends \LogicException implements DiFactoryExceptionInterface
+class LogicException extends DiFactoryException implements DiFactoryExceptionInterface
 {
 }
