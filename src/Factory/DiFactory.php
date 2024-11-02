@@ -587,16 +587,6 @@ class DiFactory implements DiFactoryInterface
                     );
         //}
 
-        // if (empty($this->serviceConfig)) {
-        //     throw new LogicException(
-        //         sprintf(
-        //             _('Service config not found. Check Configuration (%s): %s'),
-        //             $this->getServicePreferenceConfigPath(),
-        //             $this->getConfig()->asJson()
-        //         )
-        //     );
-        // }
-
         //return $this->serviceConfig;
     }
 
