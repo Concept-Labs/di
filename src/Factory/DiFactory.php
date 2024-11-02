@@ -571,11 +571,21 @@ class DiFactory implements DiFactoryInterface
     {
         //if (null === $this->serviceConfig) {
             if (!$this->getConfig()->has($this->getServicePreferenceConfigPath())) {
+                /**
+                 * No preference found, return the default configuration:
+                 * Service ID as the class name
+                 */
+                if (class_exists($this->getServiceId())) {
+                    return $this->getConfig()
+                        ->withData([
+                            DiFactoryInterface::NODE_CLASS => $this->getServiceId()
+                        ]);
+                }
+
                 throw new LogicException(
                     sprintf(
-                        _('Service config path not found. Check Configuration (%s): %s'),
-                        $this->getServicePreferenceConfigPath(),
-                        $this->getConfig()->asJson()
+                        _('Service config path not found. Check Configuration path "%s"'),
+                        $this->getServicePreferenceConfigPath()
                     )
                 );
             }
