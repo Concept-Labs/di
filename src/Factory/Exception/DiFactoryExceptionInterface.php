@@ -1,6 +1,6 @@
 <?php
 namespace Concept\Di\Factory\Exception;
 
-interface DiFactoryExceptionInterface
+interface DiFactoryExceptionInterface extends \Throwable
 {   
 }
