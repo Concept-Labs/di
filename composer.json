@@ -5,16 +5,14 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Victor Galitsky",
-            "email": "concept.galitsky@gmail.com"
+            "name": "Mtr",
+            "email": "info.concept.labs@gmail.com"
         }
     ],
     "require": {
         "php": ">=7.4",
         "concept-labs/factory": "^1",
-        "concept-labs/config": "^1",
-        "concept-labs/container": "^1",
-        "concept-labs/context": "^1"
+        "concept-labs/config": "^1"
     },
     "autoload": {
         "psr-4": {
