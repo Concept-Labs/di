@@ -1,7 +1,22 @@
 <?php
+/**
+ * Interface ServiceCacheInterface
+ * 
+ * This interface defines the contract for a service cache within the dependency injection framework.
+ * Implementations of this interface are responsible for caching service instances to improve performance
+ * by avoiding redundant service creation.
+ * 
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di
+ */
+ 
 namespace Concept\Di\Factory\Context;
 
 use ReflectionClass;
+use Concept\PathAccess\PathAccessInterface;
 
 interface ServiceCacheInterface
 {
@@ -17,23 +32,78 @@ interface ServiceCacheInterface
      * 
      * @return object
      */
-    public function getServiceInstance(): object;
+    public function getInstance(): ?object;
 
-    public function setServiceInstance(object $service): self;
+    /**
+     * Set service instance
+     * 
+     * @param object $service
+     * 
+     * @return self
+     */
+    public function setInstance(object $service): self;
 
+    /**
+     * Get service ID
+     * 
+     * @return string
+     */
     public function getServiceId(): string;
 
+    /**
+     * Get service Id
+     * 
+     * @return self
+     */
     public function setServiceId(string $serviceId): self;
 
-    // public function getServiceClass(): string;
+    /**
+     * Set service ID
+     * 
+     * @param string $serviceId
+     * 
+     * @return self
+     */
+    public function getConfigContext(): ?PathAccessInterface;
 
-    // public function setServiceClass(string $serviceClass): self;
+    /**
+     * Set service config context
+     * 
+     * @param PathAccessInterface $serviceConfig
+     * 
+     * @return self
+     */
+    public function setConfigContext(PathAccessInterface $serviceConfig): self;
 
-    public function getServiceReflection(): ?ReflectionClass;
+    /**
+     * Get service reflection
+     * 
+     * @return ReflectionClass
+     */
+    public function getReflection(): ?ReflectionClass;
 
-    public function setServiceReflection(ReflectionClass $serviceReflection): self;
+    /**
+     * Set service reflection
+     * 
+     * @param ReflectionClass $serviceReflection
+     * 
+     * @return self
+     */
+    public function setReflection(ReflectionClass $serviceReflection): self;
 
-    public function getServiceArguments(): array;
+    /**
+     * Get service arguments
+     * 
+     * @return array
+     */
+    public function getArguments(): array;
 
-    public function setServiceArguments(array $serviceArguments): self;
+    /**
+     * Set service arguments
+     * 
+     * @param array $serviceArguments
+     * 
+     * @return self
+     */
+    public function setArguments(array $serviceArguments): self;
 }

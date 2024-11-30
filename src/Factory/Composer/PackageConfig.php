@@ -1,4 +1,16 @@
 <?php
+/**
+ * PackageConfig
+ *
+ * This file is part of the Concept Labs Dependency Injection package.
+ * It is responsible for managing the configuration context within the DI framework.
+ *
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di 
+ */
 namespace Concept\Di\Factory\Composer;
 
 use Concept\Config\Config;
@@ -123,7 +135,7 @@ class PackageConfig extends Config implements PackageConfigInterface
     }
 
     /**
-     * Build the package
+     * Build the package configuration
      * 
      * @return self
      */
@@ -145,12 +157,7 @@ class PackageConfig extends Config implements PackageConfigInterface
     }
 
     /**
-     * Merge the data to the config
-     * 
-     * @param string $path
-     * @param mixed $data
-     * 
-     * @return self
+     * Build the namespace dependency
      */
     protected function buildNamespaceDependency()
     {
@@ -172,12 +179,7 @@ class PackageConfig extends Config implements PackageConfigInterface
     }
 
     /**
-     * Merge the data to the config
-     * 
-     * @param string $path
-     * @param mixed $data
-     * 
-     * @return self
+     * build the package dependency
      */
     protected function buildPakageDependency()
     {
@@ -196,9 +198,7 @@ class PackageConfig extends Config implements PackageConfigInterface
         );
 
         foreach ($this->getRequires() as $require) {
-            if ($require == 'concept-labs/singleton') {
-                $debug = true;
-            }
+
             if (!$this->getCompabilityValidator()($require)) {
                continue;
             }
@@ -217,15 +217,14 @@ class PackageConfig extends Config implements PackageConfigInterface
         }
     }
 
+    
+
     /**
-     * Merge the data to the config
+     * Merge collected concept data to the configuration
      * 
-     * @param string $path
-     * @param mixed $data
-     * 
-     * @return self
+     * @return void
      */
-    protected function buildConceptData()
+    protected function buildConceptData(): void
     {
         $this->mergeTo(
             join(
@@ -241,9 +240,13 @@ class PackageConfig extends Config implements PackageConfigInterface
     }
 
     /**
-     * Include external config
-     * 
-     * @return self
+     * Includes an external configuration file into the current configuration.
+     *
+     * This method is responsible for loading and merging an external configuration
+     * file into the existing configuration of the application. It ensures that any
+     * additional settings or overrides specified in the external file are applied.
+     *
+     * @return self Returns the current instance of the class for method chaining.
      */
     protected function includeExternalConfig(): self
     {

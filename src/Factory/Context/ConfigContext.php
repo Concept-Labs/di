@@ -1,4 +1,16 @@
 <?php
+/**
+ * ConfigContext
+ *
+ * This file is part of the Concept Labs Dependency Injection package.
+ * It is responsible for managing the configuration context within the DI framework.
+ *
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di
+ */
 namespace Concept\Di\Factory\Context;
 
 use Concept\Config\Config;
@@ -7,54 +19,62 @@ use Concept\PathAccess\PathAccessInterface;
 
 class ConfigContext extends Config implements ConfigContextInterface
 {
-    protected array $dependencyStack = [];
+    private array $dependencyStack = [];
 
-
-    public function getServicePreferenceConfigPath(string $serviceId): string
+    /**
+     * {@inheritDoc}
+     *
+     * This method is part of the Factory Context within the Dependency Injection (DI) system.
+     * It is responsible for providing configuration context necessary for the creation of 
+     * objects within the DI container. The configuration context typically includes parameters 
+     * and settings that influence how objects are instantiated and wired together.
+     *
+     * This method retrieves the service configuration for a given service ID. If a preference 
+     * configuration for the service ID is not found, it returns a default configuration where 
+     * the service ID is used as the class name. The method also validates the preference 
+     * configuration if it exists.
+     *
+     * @param string $serviceId The unique identifier of the service whose configuration is to be retrieved.
+     * @return PathAccessInterface The configuration for the specified service.
+     * @throws LogicException If a circular dependency is detected or if the package path is not found.
+     */
+    public function getServiceConfig(string $serviceId): PathAccessInterface
     {
-        return $this->path(ConfigContextInterface::NODE_PREFERENCE, $serviceId);
-    }
+        $preferenceConfigPath = $this->path(ConfigContextInterface::NODE_PREFERENCE, $serviceId);
 
-    
-    public function getServicePreferenceConfig(string $serviceId): self
-    {
-        if (!$this->has($this->getServicePreferenceConfigPath($serviceId))) {
+        if (!$this->has($preferenceConfigPath)) {
             return $this->withData([
+                /**
+                 * Allow service ID as the class name by default
+                 */
                     ConfigContextInterface::NODE_CLASS => $serviceId
                 ]);
             // throw new LogicException(
             //     sprintf(_('Service preference config not found for service ID "%s"'), $serviceId)
             // );
         }
-        return $this->from($this->getServicePreferenceConfigPath($serviceId));
+        $preferenceConfig = $this->from($preferenceConfigPath);
+
+        $this->validatePreferenceConfig($preferenceConfig);
+
+        return $preferenceConfig;
     }
 
-    
-    public function getPreferenceClass(string $serviceId): string
+    /**
+     * {@inheritDoc}
+     * 
+     * Builds the service context for the given service ID with optional configuration overrides.
+     *
+     * This method initializes and configures the service context based on the provided service ID.
+     * Optionally, configuration overrides can be passed to customize the context.
+     *
+     * @param string $serviceId The unique identifier of the service for which the context is being built.
+     * @param array $configOverrides An optional associative array of configuration overrides to customize the service context.
+     * 
+     * @return self Returns the current instance of the ConfigContext with the built service context.
+     */
+    public function buildServiceContext($serviceId, array $configOverrides = []): self
     {
-        return $this->getServicePreferenceConfig($serviceId)->get(ConfigContextInterface::NODE_CLASS);
-    }
-
-   
-    public function getServiceParametersConfig(string $serviceId): self
-    {
-        $preferenceConfig = $this->getServicePreferenceConfig($serviceId);
-
-        if (!$preferenceConfig->has(ConfigContextInterface::NODE_PARAMETERS)) {
-            return $preferenceConfig->withData([]);
-        }
-
-        return $preferenceConfig->from(ConfigContextInterface::NODE_PARAMETERS);
-    }
-
-
-    
-    public function buildServiceContext($serviceId, array $config = []): self
-    {
-        /**
-         * Optionally merge the config
-         */
-        //$this->merge($config);
         /**
          * Merge namespace context first.
          * Preference config may be located in the namespace node
@@ -79,7 +99,7 @@ class ConfigContext extends Config implements ConfigContextInterface
         /**
          * Preference config
          */
-        $preferenceConfig = $this->getServicePreferenceConfig($serviceId);
+        $preferenceConfig = $this->getServiceConfig($serviceId);
         /**
          * Apply dependency context
          */
@@ -111,11 +131,50 @@ class ConfigContext extends Config implements ConfigContextInterface
                     $serviceId => $preferenceConfig->asArray()
                 ]
         ]);
+
+        /**
+         * Optionally merge the config overrides
+         */
+        $this->merge($configOverrides);
         
         return $this;
     }
 
+    /**
+     * Validate preference config
+     * 
+     * @param PathAccessInterface $config
+     * 
+     * @return void
+     */
+    protected function validatePreferenceConfig(PathAccessInterface $config): void
+    {
+        /**
+         * @todo Implement
+         */
+        return;
+    }
     
+    /**
+     * Merges the namespace context for a given service ID.
+     * 
+     * This method is responsible for merging the context associated with a specific
+     * service identifier. It ensures that the namespace context is properly combined
+     * and updated based on the provided service ID.
+     * 
+     * @param string $serviceId The identifier of the service whose namespace context
+     *                          needs to be merged. This should be a unique string
+     *                          representing the service within the application.
+     * 
+     * @return void This method does not return any value.
+     */
+    /**
+     * Merge namespace context
+     * 
+     * @param string $serviceId
+     * 
+     * @return void
+     */
     protected function mergeNamespaceContext(string $serviceId): void
     {
         $namespaceParts = explode('\\', $serviceId);
@@ -153,18 +212,23 @@ class ConfigContext extends Config implements ConfigContextInterface
         }
     }
 
-    /**
-     * Merge dependency context
-     * Configuration node "depends" may contain a list of packages to merge:
+     /**
+     * Merges the dependency context from the given configuration.
+     *
+     * The configuration node "depends" may contain a list of packages to merge,
+     * structured as follows:
      *   "depends": {"package1":{...}, "package2":{...}}
-     * 
-     * @param PathAccessInterface $config
-     * 
-     * @return self
-     * 
-     * @throws LogicException
+     *
+     * This method processes the "depends" node and merges the specified packages
+     * into the current context.
+     *
+     * @param PathAccessInterface $config The configuration object containing the "depends" node.
+     *
+     * @return self Returns the current instance for method chaining.
+     *
+     * @throws LogicException If there is an error during the merging process.
      */
-    protected function mergeDependencyContext(PathAccessInterface $config): self
+    protected function mergeDependencyContext(PathAccessInterface $config): void
     {
         $dependencies = $config->get(ConfigContextInterface::NODE_DEPENDS) ?? [];
         /**
@@ -221,21 +285,27 @@ class ConfigContext extends Config implements ConfigContextInterface
 //@TODO: Think
         //$config->unset(ConfigContextInterface::NODE_DEPENDS);
        
-        return $this;
     }
 
     /**
-     * Merge reference context
-     * Preference configuration may contain a reference to another configuration:
-     *    "preference": {
-     *      "reference": "path/to/reference"
-     *   }
+     * Merge reference context.
+     *
+     * This method merges the reference context into the current configuration context.
+     * The preference configuration may contain a reference to another configuration,
+     * specified in the following format:
      * 
-     * @param ConfigContextInterface $config
-     * 
+     * "preference": {
+     *     "reference": "path/to/reference"
+     * }
+     *
+     * This method will resolve the reference and merge the referenced configuration
+     * into the current configuration context.
+     *
+     * @param ConfigContextInterface $config The configuration context to merge the reference into.
+     *
      * @return void
-     * 
-     * @throws LogicException
+     *
+     * @throws LogicException If the reference cannot be resolved or if there is a circular reference.
      */
     protected function mergeReferenceContext(ConfigContextInterface $config): void
     {
@@ -283,18 +353,24 @@ class ConfigContext extends Config implements ConfigContextInterface
 
     /**
      * Merge sub DI context
-     * Preference configuration may contain a sub DI configuration:
+     *
+     * This method merges a sub Dependency Injection (DI) context into the current configuration context.
+     * The preference configuration may contain a sub DI configuration, which is represented as a nested
+     * structure within the "di" key. The method processes this nested DI configuration and 
+     * integrates it into the current context.
+     *
+     * Example of preference configuration with sub DI context:
      * {
      *     "preference": {
      *        "di": {
-     *          ...
-     *       }
+     *          // Sub DI configuration details
+     *        }
+     *     }
      * }
-     * 
-     * @param ConfigContextInterface $config
-     * 
+     *
+     * @param ConfigContextInterface $config The configuration context that contains the sub DI configuration
+     *
      * @return void
-     * 
      */
     protected function mergeSubDiContext(ConfigContextInterface $config): void
     {

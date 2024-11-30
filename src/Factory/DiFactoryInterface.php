@@ -1,5 +1,15 @@
 <?php
-
+/**
+ * DiFactoryInterface.php
+ *
+ * This file contains the interface definition for the DiFactoryInterface.
+ *
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di
+ */
 namespace Concept\Di\Factory;
 
 use Psr\Container\ContainerInterface;
@@ -10,6 +20,16 @@ interface DiFactoryInterface extends FactoryInterface
 {
 
     public function create(?string $serviceId = null, ...$args);//: object;
+
+     /**
+     * Create a lazy service
+     * 
+     * @param string $serviceId
+     * @param mixed ...$args
+     * 
+     * @return callable
+     */
+    public function lazyCreate(string $serviceId, ...$args): callable;
 
     /**
      * Get the factory clone and set the container

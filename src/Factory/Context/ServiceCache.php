@@ -1,42 +1,91 @@
 <?php
+/**
+ * ServiceCache.php
+ *
+ * This file is part of the Concept Labs Dependency Injection package.
+ *
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di
+ */
 
 namespace Concept\Di\Factory\Context;
 
-use Concept\Di\Factory\Exception\RuntimeException;
 use ReflectionClass;
+use Concept\Di\Factory\Exception\RuntimeException;
+use Concept\PathAccess\PathAccessInterface;
+
 
 class ServiceCache  implements ServiceCacheInterface
 {
-
-    private ?string $serviceId = null;
-    //private ?string $serviceClass = null;
-    private ?ReflectionClass $serviceReflection = null;
-    private array $serviceArguments = [];
+    /**
+     * Service instance
+     *
+     * @var object
+     */
     private ?object $serviceInstance;
+    /**
+     * Service ID
+     *
+     * @var string
+     */
+    private ?string $serviceId = null;
+    /**
+     * Service config context
+     *
+     * @var PathAccessInterface
+     */
+    private ?PathAccessInterface $serviceConfig = null;
+    /**
+     * Service reflection
+     *
+     * @var ReflectionClass
+     */
+    private ?ReflectionClass $serviceReflection = null;
+    /**
+     * Service arguments
+     *
+     * @var array
+     */
+    private array $serviceArguments = [];
 
+    /**
+     * {@inheritDoc}
+     */
     public function reset(): self
     {
         $this->serviceInstance = null;
         $this->serviceId = null;
-        //$this->serviceClass = null;
+        $this->serviceConfig = null;
         $this->serviceReflection = null;
         $this->serviceArguments = [];
 
         return $this;
     }
 
-    public function getServiceInstance(): object
+    /**
+     * {@inheritDoc}
+     */
+    public function getInstance(): ?object
     {
         return $this->serviceInstance;
     }
 
-    public function setServiceInstance($instance): self
+    /**
+     * {@inheritDoc}
+     */
+    public function setInstance($instance): self
     {
         $this->serviceInstance = $instance;
 
         return $this;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function getServiceId(): string
     {
         if ($this->serviceId === null) {
@@ -45,6 +94,9 @@ class ServiceCache  implements ServiceCacheInterface
         return $this->serviceId;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public function setServiceId(string $serviceId): self
     {
         $this->serviceId = $serviceId;
@@ -52,42 +104,54 @@ class ServiceCache  implements ServiceCacheInterface
         return $this;
     }
 
-    // public function getServiceClass(): string
-    // {
-    //     if ($this->serviceClass === null) {
-    //         throw new ServiceClassNotResolvedException('Service class not set');
-    //     }
-
-    //     return $this->serviceClass;
-    // }
-
-    // public function setServiceClass($serviceClass): self
-    // {
-    //     $this->serviceClass = $serviceClass;
-
-    //     return $this;
-    // }
-
-    public function getServiceReflection(): ?ReflectionClass
+    /**
+     * {@inheritDoc}
+     */
+    public function getConfigContext(): ?PathAccessInterface
     {
+        return $this->serviceConfig;
+    }
 
+    /**
+     * {@inheritDoc}
+     */
+    public function setConfigContext(PathAccessInterface $serviceConfig): self
+    {
+        $this->serviceConfig = $serviceConfig;
 
+        return $this;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getReflection(): ?ReflectionClass
+    {
         return $this->serviceReflection;
     }
 
-    public function setServiceReflection(ReflectionClass $serviceReflection): self
+    /**
+     * {@inheritDoc}
+     */
+    public function setReflection(ReflectionClass $serviceReflection): self
     {
         $this->serviceReflection = $serviceReflection;
 
         return $this;
     }
 
-    public function getServiceArguments(): array
+    /**
+     * {@inheritDoc}
+     */
+    public function getArguments(): array
     {
         return $this->serviceArguments;
     }
 
-    public function setServiceArguments($serviceArguments): self
+    /**
+     * {@inheritDoc}
+     */
+    public function setArguments($serviceArguments): self
     {
         $this->serviceArguments = $serviceArguments;
 
