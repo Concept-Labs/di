@@ -1,4 +1,19 @@
 <?php
+/**
+ * This class is part of the Concept Labs Dependency Injection package.
+ * It provides context for Composer, which is used to manage dependencies
+ * and autoloading in PHP projects.
+ *
+ * The ComposerContext class is responsible for interacting with Composer
+ * to retrieve and manage package information, dependencies, and other
+ * related tasks within the application.
+ *
+ * @package     Concept\Di
+ * @category    DependencyInjection
+ * @author      Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license     https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ * @link        https://github.com/concept-labs/di
+*/
 namespace Concept\Di\Factory\Composer;
 
 use Concept\Di\Factory\Composer\PackageConfig;
@@ -16,9 +31,10 @@ class ComposerContext extends ConfigContext implements ComposerContextInterface
      */
     protected array $packages = [];
 
-
     /**
      * {@inheritDoc}
+    
+     * phpdoc
      */
     public function buildComposerContext(): self
     {

@@ -1,7 +1,19 @@
 <?php
+/**
+ * Interface ConfigContextInterface
+ *
+ * This interface defines the contract for configuration context within the dependency injection system.
+ * Implementations of this interface are responsible for providing configuration settings required by the DI factory.
+ *
+ * @package Concept\Di
+ * @category DependencyInjection
+ * @author Victor Galitsky (mtr) concept.galitsky@gmail.com
+ * @license https://opensource.org/licenses/Apache-2.0 Apache License, Version 2.0
+ */
 namespace Concept\Di\Factory\Context;
 
 use Concept\Config\ConfigInterface;
+use Concept\PathAccess\PathAccessInterface;
 
 interface ConfigContextInterface extends ConfigInterface
 {
@@ -38,4 +50,13 @@ interface ConfigContextInterface extends ConfigInterface
      * @throws LogicException
      */
     public function buildServiceContext($serviceId, array $config = []): self;
+
+    /**
+     * Get service config after building the context
+     * 
+     * @param string $serviceId
+     * 
+     * @return PathAccessInterface
+     */
+    public function getServiceConfig(string $serviceId): PathAccessInterface;
 }
