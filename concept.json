@@ -1,12 +1,15 @@
 {
     "di": {
-        "module": {
+        "package": {
             "concept-labs/di": {
-                "preference": {
+                "--preference": {
+                    "Concept\\Di\\Factory\\Context\\ConfigContextInterface": {
+                        "class": "Concept\\Di\\Factory\\Context\\ConfigContext"
+                    },
                     "Concept\\Factory\\FactoryInterface": {
                         "class": "Concept\\Di\\Factory\\DiFactory"
                     },
-                    "Concept\\Di\\Factory\\DiFactory": {
+                    "Concept\\Di\\Factory\\DiFactoryInterface": {
                         "class": "Concept\\Di\\Factory\\DiFactory",
                         "singleton": true
                     }

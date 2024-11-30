@@ -6,5 +6,4 @@ use Concept\Prototype\PrototypableTrait;
 trait InjectableTrait
 {    
     use PrototypableTrait;
-    
 }

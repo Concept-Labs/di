@@ -1,108 +1,132 @@
 <?php
 namespace Concept\Di\Factory;
 
-
+use Concept\Di\Factory\Context\ConfigContext;
 use ReflectionMethod;
 use ReflectionClass;
 use ReflectionNamedType;
 use Psr\Container\ContainerInterface;
-use Concept\Config\ConfigInterface;
+use Concept\Di\Factory\Context\ConfigContextInterface;
+use Concept\Di\Factory\Context\ServiceCache;
+use Concept\Di\Factory\Context\ServiceCacheInterface;
+use Concept\Di\Factory\Exception\DiFactoryException;
 use Concept\Di\Factory\Exception\LogicException;
 use Concept\Di\Factory\Exception\RuntimeException;
 
 class DiFactory implements DiFactoryInterface
 {
-    protected ?ConfigInterface $config = null;
-    protected ?ContainerInterface $container = null;
 
-    protected ?ReflectionClass $serviceReflection = null;
-    protected ?ConfigInterface $serviceConfig = null;
+    private ?ContainerInterface $container = null;
+    private ?ServiceCacheInterface $serviceCache = null;
 
-    protected ?string $serviceId = null;
-    protected ?array $parameters = null;
+    private ?ConfigContextInterface $configRuntimeContext = null;
+    private ?ConfigContextInterface $overrides = null;
 
-    protected array $serviceStack = [];
-    //private array $dependencyStack = [];
-    protected ?string $resolvedServiceClass = null;
-    protected $service = null;
+    private array $serviceStack = [];
 
-    public function __construct(?ConfigInterface $config = null, ?ContainerInterface $container = null)
+
+    public function __construct()
     {
-        $this->config = $config;
-        $this->container = $container;
-    }
-
-    public function reset()
-    {
-        $excluded = ['config', 'container', 'serviceStack', 'dependencyStack'];
-
-        foreach (get_object_vars($this) as $property => $value) {
-            if (!in_array($property, $excluded)) {
-                $this->$property = null;
-            }
-        }
-    }
-
-    public function __clone()
-    {
-        $this->reset();
-    }
-
-    public function withConfig(ConfigInterface $config): self
-    {
-        $clone = clone $this;
-        $clone->config = $config;
-
-        return $clone;
+        $this->serviceCache = new ServiceCache();
     }
     
-    public function withContainer(ContainerInterface $container): self
+    /**
+     * Clone the factory
+     * 
+     * @return void
+     */
+    public function __clone()
+    {
+        if (null !== $this->configRuntimeContext) {
+            $this->configRuntimeContext = clone $this->configRuntimeContext;
+        }
+        
+        $this->serviceCache = clone $this->serviceCache;
+    }
+
+    public function __destruct()
+    {
+    }
+
+    public function withConfigContext(ConfigContextInterface $configContext): self
     {
         $clone = clone $this;
-        $clone->container = $container;
+        $clone->configRuntimeContext = $configContext;
+        
+        if ($configContext->has(ConfigContextInterface::NODE_PREFERENCE)) {
+            $clone->overrides = $configContext->from(ConfigContextInterface::NODE_PREFERENCE);
+        }
 
         return $clone;
     }
 
+    /**
+     * Get the runtime context
+     * 
+     * @return ConfigContextInterface|null
+     */
+    protected function getRuntimeContext(): ConfigContextInterface
+    {
+        return $this->configRuntimeContext ?? new ConfigContext();
+    }
+
+    /**
+     * Get the service cache
+     * 
+     * @return ServiceCacheInterface
+     */
+    protected function getServiceCache(): ServiceCacheInterface
+    {
+        return $this->serviceCache;
+    }
+
+    public function setContainer(ContainerInterface $container): self
+    {
+        $this->container = $container;
+
+        return $this;
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function withContainer(ContainerInterface $container): self
+    {
+        return $this->setContainer($container);
+
+        /**
+         * Do not clone the factory
+         * @todo: think about it
+         */
+        // $clone = clone $this;
+        // $clone->container = $container;
+
+        // return $clone;
+    }
+
+    /**
+     * Get the container
+     * 
+     * @return ContainerInterface
+     */
     protected function getContainer(): ?ContainerInterface
     {
         return $this->container;
     }
 
-    protected function getConfig(): ConfigInterface
-    {
-        if (null === $this->config) {
-            throw new RuntimeException('Config is not set');
-        }
-
-        return $this->config;// ?? $this->create(ConfigInterface::class);
-    }
-
+    /**
+     * Get the service ID
+     * 
+     * @return string
+     */
     protected function getServiceId(): string
     {
-        if (null === $this->serviceId) {
+        $serviceId = $this->getServiceCache()->getServiceId();
+        
+        if (null === $serviceId) {
             throw new RuntimeException('Service ID is not set');
         }
-        return $this->serviceId;
-    }
-
-    protected function setServiceId(string $serviceId): self
-    {
-        $this->serviceId = $serviceId;
-
-        return $this;
-    }
-
-    protected function getParameters(): ?array
-    {
-        return $this->parameters;
-    }
-
-    protected function setParameters(array $parameters): self
-    {
-        $this->parameters = $parameters;
-
-        return $this;
+        return $serviceId;
     }
 
     /**
@@ -110,23 +134,24 @@ class DiFactory implements DiFactoryInterface
      * 
      * @return mixed
      */
-    protected function getService()
+    protected function getServiceInstance()
     {
-        if (null === $this->service) {
+        $service = $this->getServiceCache()->getServiceInstance();
+
+        if (null === $service) {
             throw new LogicException('Service is not created yet');
         }
 
-        return $this->service;
+        return $service;
     }
 
-    protected function setService($service): self
-    {
-        $this->service = $service;
-
-        return $this;
-    }
-
-    protected function assertState(): self
+    /**
+     * Assert factory state
+     * Check if the service is not in the service stack
+     * 
+     * @return self
+     */
+    protected function assertDependencyStack(): self
     {
         if ($this->isInServiceStack($this->getServiceId())) {
             throw new LogicException(
@@ -137,14 +162,59 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-    public function create(?string $serviceId = null, ...$parameters): object
+    /**
+     * Initialize the service cache
+     * 
+     * @param string|null $serviceId
+     * @param array $args
+     * 
+     * @return self
+     */
+    protected function initServiceCache(?string $serviceId = null, array $args = []): self
     {
-        $this->reset();
-        $this->setServiceId($serviceId);
-        $this->setParameters($parameters);
+        $this->getServiceCache()->reset()
+            ->setServiceId($serviceId)
+            ->setServiceArguments($args);
+
+        return $this;
+    }
+
+    /**
+     * @return self
+     */
+    protected function buildConfigContext(string $serviceId/*, array $config = []*/): self
+    {
+        $this->getRuntimeContext()
+            ->buildServiceContext($serviceId)
+            /**
+             * use Initial top levels with top priority
+             * @todo: think about it, performance
+             */
+            ->merge([ConfigContextInterface::NODE_PREFERENCE => $this->overrides ? $this->overrides->asArray() : []]);
+            ;
+        
+
+        return $this;
+    }
+
+    /**
+     * Create service instance
+     * 
+     * @param string|null $serviceId
+     * @param mixed ...$args
+     * 
+     * @return object
+     */
+    public function create(?string $serviceId = null, ...$args): object
+    {
+        if (null === $serviceId) {
+            throw new DiFactoryException('Service ID is not passed');
+        }
+
+        $this->initServiceCache($serviceId, $args);
 
         /**
-         * @todo: singleton should be here?
+         * If the service is registered in the container, return it
          */
         if ($this->getContainer() && $this->getContainer()->has($serviceId)) {
             return $this->getContainer()->get($serviceId);
@@ -152,21 +222,14 @@ class DiFactory implements DiFactoryInterface
 
         $this
             /**
-             * Assert factory state is valid
-             */
-            ->assertState()
-            /**
+             * Assert dependency stack
              * Avoid circular dependencies
              */
-            ->addServiceStack($this->getServiceId())
+            ->assertDependencyStack()->addServiceStack($this->getServiceId())
             /**
-             * Apply config context
+             * Buildruntime config context
              */
-            ->applyConfigContext()
-            /**
-             * Apply Runtime config context
-             */
-            ->applyServiceRuntimeContext()
+            ->buildConfigContext($this->getServiceId())
             /**
              * CREATE SERVICE INSTANCE
              */
@@ -184,20 +247,32 @@ class DiFactory implements DiFactoryInterface
              */
             ->applyServiceLifeCycle()
             /**
-             * Restore config context
-             */
-            ->restoreConfigContext()
-            /**
              * Remove service id from the circular dependency stack
              */
             ->removeServiceStack($this->getServiceId());
 
-        return $this->getService();
+        return $this->getServiceInstance();
     }
 
     /**
+     * Create a lazy service
+     * 
+     * @param string $serviceId
+     * @param mixed ...$args
+     * 
+     * @return callable
+     */
+    public function lazy(string $serviceId, ...$args): callable
+    {
+        return function () use ($serviceId, $args) {
+            return $this->create($serviceId, ...$args);
+        };
+    }
+        
+
+    /**
      * Create service instance
-     * Use reflection
+     * Use reflection class to create the instance
      * If the class is instantiable without constructor, create the instance
      * If the class has a constructor, resolve the parameters
      * If the class is not instantiable, throw an exception
@@ -206,16 +281,16 @@ class DiFactory implements DiFactoryInterface
      */
     protected function instantiate(): self
     {
+        $serviceInstance = null;
         $reflection = $this->getServiceReflection();
 
         if (!$reflection->isInstantiable()) {
             throw new LogicException(
                 sprintf(
-                    _('Class "%s" is not instantiable. Check Configuration (%s): %s'), 
-                    $this->getServiceClass(), 
-                    $this->getServicePreferenceConfigPath(),
-                    $this->getServiceConfig()->asJson()
-                    )
+                    _('Service "%s" (resolved preference: "%s") is not instantiable. Check Dependency Configuration'), 
+                    $this->getServiceId(),
+                    $reflection->getName()
+                )
             );
         }
 
@@ -223,25 +298,50 @@ class DiFactory implements DiFactoryInterface
             /**
              * No constructor
              */
-            $this->setService(
-                $reflection->newInstanceWithoutConstructor()
-            );
+            $serviceInstance = $reflection->newInstanceWithoutConstructor();
         } else {
             /**
-             * Constructor
+             * Constructor.
+             * Resolve parameters
              */
             $parameters = $this->resolveParameters($reflection->getConstructor());
-            $this->setService(
-                $reflection->newInstance(...$parameters)
+
+            $serviceInstance = $reflection->newInstance(...$parameters);
+        }
+
+        $this->getServiceCache()->setServiceInstance($serviceInstance);
+
+        if (!is_object($serviceInstance)) {
+            throw new LogicException(
+                sprintf(
+                    _('Unable to create dependency: Service "%s" (resolved preference: "%s") is not an object'), 
+                    $this->getServiceId(),
+                    $reflection->getName()
+                )
             );
         }
+
+        /**
+         * strict check ?
+         * Check if the service instance is an instance of the service ID
+         */
+        // if (!is_subclass_of($serviceInstance, $this->getServiceId())) {
+        //     throw new LogicException(
+        //         sprintf(
+        //             _('Unable to create dependency: Service "%s" (resolved preference: "%s") is not an instance of "%s"'), 
+        //             $this->getServiceId(),
+        //             $reflection->getName(),
+        //             $this->getServiceId()
+        //         )
+        //     );
+        // }
 
         return $this;
     }
 
     /**
      * Invoke DI methods
-     * Methods with the prefix DiFactoryInterface::DI_METHOD_PREFIX are invoked
+     * Methods with the prefix ConfigContextInterface::DI_METHOD_PREFIX are invoked
      * Resolve parameters for each method
      * The method is invoked with resolved parameters
      * 
@@ -252,10 +352,13 @@ class DiFactory implements DiFactoryInterface
         $reflection = $this->getServiceReflection();
 
         foreach ($reflection->getMethods() as $method) {
-            if (strpos($method->getName(), DiFactoryInterface::DI_METHOD_PREFIX) === 0) {
+            //@todo: uncomment to improve performance get only private and final at same time  methods
+            //@todo: deprecated this and move to attributes
+            //foreach ($reflection->getMethods(ReflectionMethod::IS_PRIVATE | ReflectionMethod::IS_FINAL ) as $method) {
+            if (strpos($method->getName(), ConfigContextInterface::DI_METHOD_PREFIX) === 0) {
                 $parameters = $this->resolveParameters($method);
                 $method->setAccessible(true);
-                $method->invoke($this->getService(), ...$parameters);
+                $method->invoke($this->getServiceInstance(), ...$parameters);
             }
         }
 
@@ -264,7 +367,7 @@ class DiFactory implements DiFactoryInterface
 
     /**
      * Invoke DI methods using attributes
-     * Methods with the DiFactoryInterface::DI_ATTRIBUTE attribute are invoked
+     * Methods with the ConfigContextInterface::DI_ATTRIBUTE attribute are invoked
      * Resolve parameters for each method
      * The method is invoked with resolved parameters
      * 
@@ -279,10 +382,13 @@ class DiFactory implements DiFactoryInterface
         }
 
         foreach ($reflection->getMethods() as $method) {
-            if ($method->getAttributes(DiFactoryInterface::DI_ATTRIBUTE)) {
+            if ($method->getAttributes(ConfigContextInterface::DI_ATTRIBUTE)) {
                 $parameters = $this->resolveParameters($method);
                 $method->setAccessible(true);
-                $method->invoke($this->getService(), ...$parameters);
+                $method->invoke(
+                    $this->getServiceInstance(),
+                    ...$parameters
+                );
             }
         }
 
@@ -297,12 +403,17 @@ class DiFactory implements DiFactoryInterface
      */
     protected function applyServiceLifeCycle(): self
     {
-        $preferenceConfig = $this->getServiceConfig();
+        $preferenceConfig = $this
+            ->getRuntimeContext()
+                ->getServicePreferenceConfig($this->getServiceId());
 
-        if ($preferenceConfig->get(DiFactoryInterface::NODE_SINGLETON)) {
+        if ($preferenceConfig->get(ConfigContextInterface::NODE_SINGLETON)) {
             if(null !== $container = $this->getContainer()) {
                 if ($container instanceof \Concept\Container\ContainerInterface) {
-                    $container->attach($this->getServiceId(), $this->getService());
+                    $container->attach(
+                        $this->getServiceId(),
+                        $this->getServiceInstance()
+                    );
                 }
             }
         }
@@ -310,350 +421,52 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-
+    
     /**
-     * Apply config context
-     * Apply the preference config to the factory config
-     * Apply the namespace config to the factory config
-     * Apply the dependency config to the factory config
-     * Apply the reference config to the factory config
-     * Apply the sub DI config to the factory config
+     * Get the service reflection
      * 
-     * @return self
+     * @return ReflectionClass
      */
-    protected function applyConfigContext(): self
-    {
-        /**
-         * Push (save) the current state of the config
-         */
-        $this->getConfig()->pushState();
-
-        
-        /**
-         * Apply namespace context first.
-         * Preference config may be located in the namespace node
-         */
-        $this->applyNamespaceContext();            
-
-        $preferencePath = $this->getConfig()
-            ->path(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
-
-        if (!$this->getConfig()->has($preferencePath)) {
-            /**
-             * No preference found, return the default configuration:
-             * Service ID as the class name
-             */
-            $serviceId = $this->getServiceId();
-
-            $this->getConfig()->merge([
-                DiFactoryInterface::NODE_PREFERENCE => [
-                    $this->getServiceId() => [
-                        DiFactoryInterface::NODE_CLASS => $serviceId                        
-                    ]
-                ]
-            ]);
-
-            return $this;
-        }
-
-        /**
-         * Preference config
-         */
-        $preferenceConfig = $this->getServiceConfig();
-        // $this
-        //     ->getConfig()
-        //         ->fromPath($preferencePath);
-
-        /**
-         * Apply dependency context
-         */
-        $this->applyDependencyContext($preferenceConfig);
-
-        /**
-         * Apply reference context
-         */
-        $this->applyReferenceContext($preferenceConfig);
-
-        /**
-         * Apply sub DI context
-         */
-        $this->applySubDiContext($preferenceConfig);
-
-        if (!$preferenceConfig->has(DiFactoryInterface::NODE_CLASS)) {
-            /**
-             * No class found, use the service ID
-             */
-            $preferenceConfig->merge(
-                [
-                    DiFactoryInterface::NODE_CLASS => $this->getServiceId()
-                ]
-            );
-        }
-
-
-        /**
-         * Apply resolved preference config to the factory config
-         */
-        $this
-            ->getConfig()
-                ->merge([
-                        DiFactoryInterface::NODE_PREFERENCE => [
-                            $this->getServiceId() => $preferenceConfig->asArray()
-                        ]
-                ]);
-        
-        return $this;
-    }
-
-    protected function applyNamespaceContext(): self
-    {
-        $namespaceParts = explode('\\', $this->getServiceId());
-        $namespace = '';
-        while (count($namespaceParts) > 0) {
-            $namespace = join('\\', [$namespace, array_shift($namespaceParts)]);
-            $namespacePath = $this->getConfig()
-                ->createPath(DiFactoryInterface::NODE_NAMESPACE, $namespace);
-            
-            if ($this->getConfig()->has($namespacePath) && !$this->getConfig()->get($namespacePath, 'applied')) 
-            {
-                $namespaceConfig = $this->getConfig()
-                    ->fromPath($namespacePath);
-                
-                /**
-                 * Apply dependency context recursively
-                 */
-                $this->applyDependencyContext($namespaceConfig);
-
-                $this->getConfig()
-                    ->merge($namespaceConfig->asArray());
-                
-                $this->getConfig()
-                    ->set($namespacePath.'.applied', true);
-            }
-        }
-
-        return $this;
-    }
-
-    protected function applyDependencyContext(ConfigInterface $config): self
-    {
-        if ($config->has(DiFactoryInterface::NODE_DEPENDS)) {
-            $modules = $config
-                ->get(DiFactoryInterface::NODE_DEPENDS);
-            
-            if (!is_array($modules)) {
-                $modules = [$modules];
-            }
-
-            foreach ($modules as $module) {
-                $modulePath = $this->getConfig()
-                    ->createPath(DiFactoryInterface::NODE_MODULE, $module);
-
-                if (!$this->getConfig()->has($modulePath)) {
-                    throw new LogicException(
-                        sprintf(_('Module path not found "%s"'), $modulePath)
-                    );
-                }
-
-                $moduleConfig = $this->getConfig()
-                    ->fromPath($modulePath);
-                
-                $this->applyDependencyContext($moduleConfig);
-
-                $this->getConfig()
-                    ->merge($moduleConfig->asArray());
-                
-            
-            }
-
-            $config->unset(DiFactoryInterface::NODE_DEPENDS);
-        }
-       
-        return $this;
-    }
-
-    protected function applyReferenceContext(ConfigInterface $config): self
-    {
-        if ($config->has(DiFactoryInterface::NODE_REFERENCE)) {
-            $referencePath = $this->getConfig()
-                ->createPath(DiFactoryInterface::NODE_PREFERENCE, $config->get(DiFactoryInterface::NODE_REFERENCE));
-
-            if (!$this->getConfig()->has($referencePath)) {
-                throw new LogicException(
-                    sprintf(_('Reference path not found "%s"'), $referencePath)
-                );
-            }
-
-            /**
-             * Apply reference config to the preference config
-             */
-            $config->merge( 
-                $this->getConfig()
-                    ->get($referencePath) 
-            );
-
-            $config->unset(DiFactoryInterface::NODE_REFERENCE);
-        }
-
-        return $this;
-    }
-
-    protected function applySubDiContext(ConfigInterface $config): self
-    {
-        if ($config->has(DiFactoryInterface::NODE_DI_CONFIG)) {
-            $this->getConfig()
-                ->merge(
-                    $config->get(DiFactoryInterface::NODE_DI_CONFIG)
-                );
-        }
-
-        return $this;
-    }
-
-    protected function applyServiceRuntimeContext(): self
-    {
-        $reflection = $this->getServiceReflection();
-
-        /**
-         * Inline DI config.
-         * This is a constant in the service class
-         * It must be an array
-         * Config structure is the same as the main config
-         */
-        if ($reflection->hasConstant(DiFactoryInterface::INLINE_DI_CONFIG_CONSTANT)) {
-            $diConfig = $reflection->getConstant(DiFactoryInterface::INLINE_DI_CONFIG_CONSTANT);
-            if (!is_array($diConfig)) {
-                throw new LogicException(
-                    sprintf(_('Constant "%s" must be an array'), DiFactoryInterface::INLINE_DI_CONFIG_CONSTANT)
-                );
-            }
-
-            $this->getConfig()
-                ->merge($diConfig);
-        }
-        
-        /**
-         * Inline DI config class method.
-         * This is a constant in the service class
-         * It must be a string and the method with this name must exist in the service class
-         * The method must be static
-         * The method must return an array
-         * The array structure is the same as the main config
-         */
-        if ($reflection->hasConstant(DiFactoryInterface::DYNAMIC_DI_CONFIG_METHOD)) {
-            $method = $reflection->getConstant(DiFactoryInterface::DYNAMIC_DI_CONFIG_METHOD);
-            if ($reflection->hasMethod($method)) {
-               
-                $methodReflection = $reflection->getMethod($method);
-                if (!$methodReflection->isStatic()) {
-                    throw new LogicException(
-                        sprintf(_('Method "%s" must be static in class "%s"'), $method, $reflection->getName())
-                    );
-                }
-
-                $methodReflection->setAccessible(true);
-                $diConfig = $methodReflection->invoke(null);
-                if (!is_array($diConfig)) {
-                    throw new LogicException(
-                        sprintf(_('Method "%s" must return an array in class "%s"'), $method, $reflection->getName())
-                    );
-                }
-
-                $this->getConfig()
-                    ->merge($diConfig);
-            }
-        }
-
-        return $this;
-    }
-
-    protected function getServiceConfig(): ConfigInterface
-    {
-        //if (null === $this->serviceConfig) {
-            if (!$this->getConfig()->has($this->getServicePreferenceConfigPath())) {
-                /**
-                 * No preference found, return the default configuration:
-                 * Service ID as the class name
-                 */
-                if (class_exists($this->getServiceId())) {
-                    return $this->getConfig()
-                        ->withData([
-                            DiFactoryInterface::NODE_CLASS => $this->getServiceId()
-                        ]);
-                }
-
-                throw new LogicException(
-                    sprintf(
-                        _('Service config path not found. Check Configuration path "%s"'),
-                        $this->getServicePreferenceConfigPath()
-                    )
-                );
-            }
-
-            return $this
-                ->getConfig()
-                    ->fromPath(
-                        $this->getServicePreferenceConfigPath()
-                    );
-        //}
-
-        //return $this->serviceConfig;
-    }
-
-    protected function getServicePreferenceConfigPath(): string
-    {
-        return $this->getConfig()
-            ->path(DiFactoryInterface::NODE_PREFERENCE, $this->getServiceId());
-    }
-
-    protected function getServiceClass(): string
-    {
-        if (null === $this->resolvedServiceClass) {
-            $this->resolvedServiceClass = $this->getServiceConfig()->get(DiFactoryInterface::NODE_CLASS);
-        }
-
-        if (!class_exists($this->resolvedServiceClass)) {
-            throw new LogicException(
-                sprintf(
-                    _('Class "%s" not found. Check Configuration (%s): %s'), 
-                    $this->resolvedServiceClass, 
-                    $this->getServicePreferenceConfigPath(),
-                    $this->getServiceConfig()->asJson()
-                )
-            );
-        }
-
-        return $this->resolvedServiceClass;
-    }
-
     protected function getServiceReflection(): ReflectionClass
     {
-        if (null === $this->serviceReflection) {
-            $this->serviceReflection = new ReflectionClass($this->getServiceClass());
+        $reflection = $this->getServiceCache()->getServiceReflection();
+        $resolvedClass = $this->getRuntimeContext()
+            ->getPreferenceClass($this->getServiceId());
+
+        if (null === $reflection) {
+            try {
+                $reflection = new ReflectionClass($resolvedClass);
+            } catch (\ReflectionException $e) {
+                throw new LogicException(
+                    sprintf(
+                        _('Unable to create dependency: Service "%s" (resolved preference: "%s") not found'),
+                        $this->getServiceId(),
+                        $resolvedClass
+                        )
+                );
+            }
+
+            $this->getServiceCache()->setServiceReflection($reflection);
         }
 
-        return $this->serviceReflection;
+        return $reflection;
     }
 
-    protected function getServiceParametersConfig(): ConfigInterface
-    {
-        $preferenceConfig = $this->getServiceConfig();
-
-        if (!$preferenceConfig->has(DiFactoryInterface::NODE_PARAMETERS)) {
-            return $preferenceConfig->withData([]);
-        }
-
-        return $preferenceConfig->fromPath(DiFactoryInterface::NODE_PARAMETERS);
-    }
-
+    /**
+     * Resolve parameters
+     * 
+     * @param ReflectionMethod $method
+     * 
+     * @return array
+     */
     protected function resolveParameters(ReflectionMethod $method): array
     {
-        $passedParameters = $this->getParameters();
-        if (!empty($passedParameters)) {
+        $passedAruments = $this->getServiceCache()->getServiceArguments();
+        if (!empty($passedAruments)) {
             /**
              * Parameters are passed explicitly
              */
-            return $passedParameters;
+            return $passedAruments;
         }
 
         $methodParameters = $method->getParameters();
@@ -667,18 +480,29 @@ class DiFactory implements DiFactoryInterface
         /**
          * Preference parameters configuration
          */
-        $parametersConfig = $this->getServiceParametersConfig();
+        $parametersConfig = $this->getRuntimeContext()
+            ->getServiceParametersConfig($this->getServiceId());
 
-        $parameters = [];
+        $dependencies = [];
 
         
 
         foreach ($methodParameters as $parameter) {
             if ($parametersConfig->has($parameter->getName())) {
                 /**
-                 * Parameter is configured
+                 * Only for static values.
+                 * To set custom prefrence configuration add sub "di" node
+                 * "preference": {
+                 *    "serviceId": {
+                 *      "di": {
+                 *        ...
+                 *          "preference": {
+                 *              ...
+                 *          }
+                 *    }
+                 * }
                  */
-                $parameters[] = $parametersConfig->get($parameter->getName(), DiFactoryInterface::NODE_PARAMETER_VALUE);
+                $dependencies[] = $parametersConfig->get($parameter->getName(), ConfigContextInterface::NODE_PARAMETER_VALUE);
                 continue;
             }
 
@@ -686,67 +510,53 @@ class DiFactory implements DiFactoryInterface
                 /**
                  * Parameter is optional. Use the default value
                  */
-                $parameters[] = $parameter->getDefaultValue();
+                $dependencies[] = $parameter->getDefaultValue();
                 continue;
             }
 
             if ($parameter->isVariadic()) {
                 throw new LogicException(
                     sprintf(
-                        _('Variadic parameters are not supported. Method: %s'),
+                        _('Unable to create dependency: Variadic parameters are not supported. Method: %s'),
                         $method->getName()
                     )
                 );
-                $parameters = array_merge($parameters, $passedParameters);
-                continue;
             }
 
             $parameterType = $parameter->getType();
             if (!$parameterType instanceof ReflectionNamedType) {
                 throw new LogicException(
-                    sprintf(_('Parameter "%s" has no named type. Currently is not supported. Method: %s'), $parameter->getName(), $method->getName())
+                    sprintf(_('Unable to create dependency: Parameter "%s" has no named type. Currently is not supported. Method: %s'), $parameter->getName(), $method->getName())
                 );
             }
 
-            $typeName = $parameterType->getName();
+            $dependencyServiceId = $parameterType->getName();
 
-            if (empty($typeName)) {
+            if (empty($dependencyServiceId)) {
                 throw new LogicException(
-                    sprintf(_('Parameter "%s" is not typed'), $parameter->getName())
+                    sprintf(_('Unable create dependency: Parameter "%s" is not typed'), $parameter->getName())
                 );
             }
 
-            /**
-             * Does the service existance mean it is a singleton?
-             * If no than @todo: check if the type is a singleton service!
-             * 
-             * Be careful with cloning the factory?
-             */
-            $parameters[] = $this->getContainer()->has($typeName) 
-                ? $this->getContainer()->get($typeName) 
+            $dependencies[] = $this->getContainer()->has($dependencyServiceId) 
+                ? $this->getContainer()->get($dependencyServiceId) 
                 /**
-                 * Important to clone the factory for the new service to it has the same config but reseted state
+                 * Important to clone the factory for the new service to it has 
+                 * the same config context
                  */
-                : (clone $this)->create($typeName);
-                /**
-                 * clone or new self?
-                 * if new than config state colund be cloned?
-                 */
-                //: (new self($this->getConfig(), $this->getContainer()))->create($typeName);
+                : (clone $this)->create($dependencyServiceId);
         }
 
-        return $parameters;
+        return $dependencies;
     }
 
-
-    protected function restoreConfigContext(): self
-    {
-        $this->getConfig()
-            ->popState();
-
-        return $this;
-    }
-
+    /**
+     * Add service id to the service stack
+     * 
+     * @param string $serviceId
+     * 
+     * @return self
+     */
     protected function addServiceStack(string $serviceId): self
     {
         $this->serviceStack[$serviceId] = true;
@@ -754,11 +564,25 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
+    /**
+     * Check if the service id is in the service stack
+     * 
+     * @param string $serviceId
+     * 
+     * @return bool
+     */
     protected function isInServiceStack(string $serviceId): bool
     {
         return array_key_exists($serviceId, $this->serviceStack);
     }
 
+    /**
+     * Remove service id from the service stack
+     * 
+     * @param string $serviceId
+     * 
+     * @return self
+     */
     protected function removeServiceStack(string $serviceId): self
     {
         unset($this->serviceStack[$serviceId]);
@@ -766,22 +590,4 @@ class DiFactory implements DiFactoryInterface
         return $this;
     }
 
-    // protected function addDependencyStack(string $dependency): self
-    // {
-    //     $this->dependencyStack[$dependency] = true;
-
-    //     return $this;
-    // }
-
-    // protected function isInDependencyStack(string $dependency): bool
-    // {
-    //     return array_key_exists($dependency, $this->dependencyStack);
-    // }
-
-    // protected function removeDependencyStack(string $dependency): self
-    // {
-    //     unset($this->dependencyStack[$dependency]);
-
-    //     return $this;
-    // }
 }
