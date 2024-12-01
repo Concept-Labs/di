@@ -40,8 +40,6 @@ interface DiFactoryInterface extends FactoryInterface
      */
     public function withContainer(ContainerInterface $container): self;
 
-    public function setContainer(ContainerInterface $container): self;
-
     /**
      * Get the factory clone and set the config
      * 
