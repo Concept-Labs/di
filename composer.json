@@ -12,7 +12,8 @@
     "require": {
         "php": ">=7.4",
         "concept-labs/factory": "^1",
-        "concept-labs/config": "^1"
+        "concept-labs/config": "^1",
+        "concept-labs/container": "^1"
     },
     "autoload": {
         "psr-4": {
