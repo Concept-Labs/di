@@ -36,7 +36,7 @@ class ComposerContext extends ConfigContext implements ComposerContextInterface
     
      * phpdoc
      */
-    public function buildComposerContext(): self
+    public function buildComposerContext(): static
     {
         $this->collectPackages();
 
@@ -61,9 +61,9 @@ class ComposerContext extends ConfigContext implements ComposerContextInterface
     /**
      * Collect packages
      * 
-     * @return self
+     * @return static
      */
-    protected function collectPackages(): self
+    protected function collectPackages(): static
     {
         $composerFiles = glob(static::getVendorDir() . '/*/*/composer.json');
         $composerFiles[] = dirname(static::getVendorDir()) . '/composer.json';
@@ -151,11 +151,11 @@ class ComposerContext extends ConfigContext implements ComposerContextInterface
             return null;
         }
 
-        if (class_exists('Composer\Autoload\ClassLoader')) {
-            $reflection = new \ReflectionClass(\Composer\Autoload\ClassLoader::class);
-            static::$vendorDir = dirname(dirname($reflection->getFileName()));
-        }
+        
+        $reflection = new \ReflectionClass(\Composer\Autoload\ClassLoader::class);
+        static::$vendorDir = dirname(dirname($reflection->getFileName()));
 
         return static::$vendorDir;
     }
+    
 }

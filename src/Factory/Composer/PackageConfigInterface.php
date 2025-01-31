@@ -11,9 +11,9 @@ interface PackageConfigInterface extends ConfigInterface
      * 
      * @param string $filename
      * 
-     * @return self
+     * @return static
      */
-    public function loadPackage(string $filename): self;
+    public function loadPackage(string $filename): static;
 
     /**
      * Get the composer data
@@ -31,5 +31,5 @@ interface PackageConfigInterface extends ConfigInterface
 
 
     public function isCompatible(): bool;
-    public function setCompabilityValidator(callable $validator): self;
+    public function setCompabilityValidator(callable $validator): static;
 }

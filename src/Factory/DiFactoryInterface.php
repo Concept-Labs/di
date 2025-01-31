@@ -38,7 +38,7 @@ interface DiFactoryInterface extends FactoryInterface
      * 
      * @return mixed
      */
-    public function withContainer(ContainerInterface $container): self;
+    public function withContainer(ContainerInterface $container): static;
 
     /**
      * Get the factory clone and set the config
@@ -47,6 +47,6 @@ interface DiFactoryInterface extends FactoryInterface
      * 
      * @return mixed
      */
-    public function withConfigContext(ConfigContextInterface $config): self;
+    public function withConfigContext(ConfigContextInterface $config): static;
 
 }

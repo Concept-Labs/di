@@ -13,9 +13,10 @@
 
 namespace Concept\Di\Factory\Context;
 
-use ReflectionClass;
+use Concept\Config\ConfigInterface;
 use Concept\Di\Factory\Exception\RuntimeException;
 use Concept\PathAccess\PathAccessInterface;
+use ReflectionClass;
 
 
 class ServiceCache  implements ServiceCacheInterface
@@ -35,9 +36,9 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * Service config context
      *
-     * @var PathAccessInterface
+     * @var ConfigInterface
      */
-    private ?PathAccessInterface $serviceConfig = null;
+    private ?ConfigInterface $serviceConfig = null;
     /**
      * Service reflection
      *
@@ -54,7 +55,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function reset(): self
+    public function reset(): static
     {
         $this->serviceInstance = null;
         $this->serviceId = null;
@@ -76,7 +77,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setInstance($instance): self
+    public function setInstance($instance): static
     {
         $this->serviceInstance = $instance;
 
@@ -97,7 +98,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setServiceId(string $serviceId): self
+    public function setServiceId(string $serviceId): static
     {
         $this->serviceId = $serviceId;
 
@@ -107,7 +108,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function getConfigContext(): ?PathAccessInterface
+    public function getConfigContext(): ?ConfigInterface
     {
         return $this->serviceConfig;
     }
@@ -115,7 +116,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setConfigContext(PathAccessInterface $serviceConfig): self
+    public function setConfigContext(ConfigInterface $serviceConfig): static
     {
         $this->serviceConfig = $serviceConfig;
 
@@ -133,7 +134,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setReflection(ReflectionClass $serviceReflection): self
+    public function setReflection(ReflectionClass $serviceReflection): static
     {
         $this->serviceReflection = $serviceReflection;
 
@@ -151,7 +152,7 @@ class ServiceCache  implements ServiceCacheInterface
     /**
      * {@inheritDoc}
      */
-    public function setArguments($serviceArguments): self
+    public function setArguments($serviceArguments): static
     {
         $this->serviceArguments = $serviceArguments;
 

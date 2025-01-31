@@ -34,7 +34,7 @@ class PackageConfig extends Config implements PackageConfigInterface
     /**
      * {@inheritDoc}
      */
-    public function loadPackage(string $filename): self
+    public function loadPackage(string $filename): static
     {
         $this->filename = $filename;
 
@@ -48,7 +48,7 @@ class PackageConfig extends Config implements PackageConfigInterface
     /**
      * {@inheritDoc}
      */
-    protected function initPackageData(array $data): self
+    protected function initPackageData(array $data): static
     {
         $this->composerData = $data;
 
@@ -105,9 +105,9 @@ class PackageConfig extends Config implements PackageConfigInterface
      * 
      * @param callable $validator
      * 
-     * @return self
+     * @return static
      */
-    public function setCompabilityValidator(callable $validator): self
+    public function setCompabilityValidator(callable $validator): static
     {
         $this->compabilityValidator = $validator;
 
@@ -137,9 +137,9 @@ class PackageConfig extends Config implements PackageConfigInterface
     /**
      * Build the package configuration
      * 
-     * @return self
+     * @return static
      */
-    public function build(): self
+    public function build(): static
     {
         if ($this->getPackageName() == 'concept-labs/singleton') {
             $debug = true;
@@ -246,9 +246,9 @@ class PackageConfig extends Config implements PackageConfigInterface
      * file into the existing configuration of the application. It ensures that any
      * additional settings or overrides specified in the external file are applied.
      *
-     * @return self Returns the current instance of the class for method chaining.
+     * @return static Returns the current instance of the class for method chaining.
      */
-    protected function includeExternalConfig(): self
+    protected function includeExternalConfig(): static
     {
         $includes = $this->getComposerData()['extra']['concept']['include'] ?? null;
         if (null === $includes) {

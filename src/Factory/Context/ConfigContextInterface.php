@@ -13,6 +13,7 @@
 namespace Concept\Di\Factory\Context;
 
 use Concept\Config\ConfigInterface;
+use Concept\DI\Factory\Attribute\Injector;
 use Concept\PathAccess\PathAccessInterface;
 
 interface ConfigContextInterface extends ConfigInterface
@@ -24,6 +25,7 @@ interface ConfigContextInterface extends ConfigInterface
     const NODE_PREFERENCE = 'preference';
     const NODE_REFERENCE = 'reference';
     const NODE_CLASS = 'class';
+    const NODE_CONFIG = 'config';
     const NODE_SINGLETON = 'singleton';
     const NODE_PARAMETERS = 'parameters';
     const NODE_PARAMETER_VALUE = 'value';
@@ -33,7 +35,7 @@ interface ConfigContextInterface extends ConfigInterface
      * @todo: use Attributes instead (PHP >= 8.0)
      */
     const DI_METHOD_PREFIX = '___di';
-    const DI_ATTRIBUTE = 'ConceptDI';
+    const DI_ATTRIBUTE = Injector::class;
 
     // const INLINE_DI_CONFIG_CONSTANT = 'DI_CONFIG_INLINE';
     // const DYNAMIC_DI_CONFIG_METHOD = '___config';
@@ -45,11 +47,11 @@ interface ConfigContextInterface extends ConfigInterface
      * @param string $serviceId
      * @param array $config
      * 
-     * @return self
+     * @return static
      * 
      * @throws LogicException
      */
-    public function buildServiceContext($serviceId, array $config = []): self;
+    public function buildServiceContext($serviceId, array $config = []): static;
 
     /**
      * Get service config after building the context
