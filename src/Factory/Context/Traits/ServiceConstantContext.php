@@ -1,6 +1,6 @@
 <?php
 //Backup
-// protected function applyServiceRuntimeContext(): self
+// protected function applyServiceRuntimeContext(): static
 //     {
 //         $reflection = $this->getServiceReflection();
 

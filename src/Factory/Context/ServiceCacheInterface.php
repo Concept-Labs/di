@@ -15,6 +15,7 @@
  
 namespace Concept\Di\Factory\Context;
 
+use Concept\Config\ConfigInterface;
 use ReflectionClass;
 use Concept\PathAccess\PathAccessInterface;
 
@@ -23,9 +24,9 @@ interface ServiceCacheInterface
     /**
      * Reset service cache
      * 
-     * @return self
+     * @return static
      */
-    public function reset(): self;
+    public function reset(): static;
 
     /**
      * Get service instance
@@ -39,9 +40,9 @@ interface ServiceCacheInterface
      * 
      * @param object $service
      * 
-     * @return self
+     * @return static
      */
-    public function setInstance(object $service): self;
+    public function setInstance(object $service): static;
 
     /**
      * Get service ID
@@ -53,27 +54,27 @@ interface ServiceCacheInterface
     /**
      * Get service Id
      * 
-     * @return self
+     * @return static
      */
-    public function setServiceId(string $serviceId): self;
+    public function setServiceId(string $serviceId): static;
 
     /**
      * Set service ID
      * 
      * @param string $serviceId
      * 
-     * @return self
+     * @return ConfigInterface
      */
-    public function getConfigContext(): ?PathAccessInterface;
+    public function getConfigContext(): ?ConfigInterface;
 
     /**
      * Set service config context
      * 
      * @param PathAccessInterface $serviceConfig
      * 
-     * @return self
+     * @return static
      */
-    public function setConfigContext(PathAccessInterface $serviceConfig): self;
+    public function setConfigContext(ConfigInterface $serviceConfig): static;
 
     /**
      * Get service reflection
@@ -87,9 +88,9 @@ interface ServiceCacheInterface
      * 
      * @param ReflectionClass $serviceReflection
      * 
-     * @return self
+     * @return static
      */
-    public function setReflection(ReflectionClass $serviceReflection): self;
+    public function setReflection(ReflectionClass $serviceReflection): static;
 
     /**
      * Get service arguments
@@ -103,7 +104,7 @@ interface ServiceCacheInterface
      * 
      * @param array $serviceArguments
      * 
-     * @return self
+     * @return static
      */
-    public function setArguments(array $serviceArguments): self;
+    public function setArguments(array $serviceArguments): static;
 }

@@ -71,10 +71,11 @@ class ConfigContext extends Config implements ConfigContextInterface
      * @param string $serviceId The unique identifier of the service for which the context is being built.
      * @param array $configOverrides An optional associative array of configuration overrides to customize the service context.
      * 
-     * @return self Returns the current instance of the ConfigContext with the built service context.
+     * @return static Returns the current instance of the ConfigContext with the built service context.
      */
-    public function buildServiceContext($serviceId, array $configOverrides = []): self
+    public function buildServiceContext($serviceId, array $configOverrides = []): static
     {
+       
         /**
          * Merge namespace context first.
          * Preference config may be located in the namespace node
@@ -82,24 +83,29 @@ class ConfigContext extends Config implements ConfigContextInterface
         $this->mergeNamespaceContext($serviceId);
 
 
-        if (!$this->has(ConfigContextInterface::NODE_PREFERENCE, $serviceId)) {
-            /**
-             * No preference found, return the default configuration:
-             * Service ID as the class name
-             */
-            $this->merge([
-                ConfigContextInterface::NODE_PREFERENCE => [
-                    $serviceId => [ConfigContextInterface::NODE_CLASS => $serviceId]
-                ]
-            ]);
+        // if (!$this->has(ConfigContextInterface::NODE_PREFERENCE, $serviceId)) {
+        //     /**
+        //      * No preference found, return the default configuration:
+        //      * Service ID as the class name
+        //      */
+        //     $this->merge([
+        //         ConfigContextInterface::NODE_PREFERENCE => [
+        //             $serviceId => [ConfigContextInterface::NODE_CLASS => $serviceId]
+        //         ]
+        //     ]);
 
-            return $this;
-        }
+        //     return $this;
+        // }
 
         /**
          * Preference config
          */
         $preferenceConfig = $this->getServiceConfig($serviceId);
+         /**
+         * Apply sub DI context
+         */
+      
+        $this->mergeSubDiContext($preferenceConfig);
         /**
          * Apply dependency context
          */
@@ -110,18 +116,12 @@ class ConfigContext extends Config implements ConfigContextInterface
          */
         $this->mergeReferenceContext($preferenceConfig);
 
-        /**
-         * Apply sub DI context
-         */
-        $this->mergeSubDiContext($preferenceConfig);
-
         if (!$preferenceConfig->has(ConfigContextInterface::NODE_CLASS)) {
             /**
              * No class found, use the service ID
              */
             $preferenceConfig->merge([ConfigContextInterface::NODE_CLASS => $serviceId]);
         }
-
 
         /**
          * Apply resolved preference config to the factory config
@@ -224,7 +224,7 @@ class ConfigContext extends Config implements ConfigContextInterface
      *
      * @param PathAccessInterface $config The configuration object containing the "depends" node.
      *
-     * @return self Returns the current instance for method chaining.
+     * @return static Returns the current instance for method chaining.
      *
      * @throws LogicException If there is an error during the merging process.
      */
@@ -263,8 +263,15 @@ class ConfigContext extends Config implements ConfigContextInterface
 
             array_push($this->dependencyStack, $package);
 
+
+            /**
+             * Find package config
+             */
             $packageConfig = $this->from($packagePath);
-            
+            /**
+             * Merge package config overrides
+             */
+            $packageConfig->merge($packageData);
             /**
              * Build dependency context recursively
              */
@@ -321,14 +328,15 @@ class ConfigContext extends Config implements ConfigContextInterface
 
             if (!$this->has($referencePath)) {
                 /**
-                 * Check absolute path
+                 * @todo
+                 * Check relative path
                  */
-                $referencePath = $config->get(ConfigContextInterface::NODE_REFERENCE);
-                if (!$this->has($referencePath)) {
+                // $referencePath = $config->get(ConfigContextInterface::NODE_REFERENCE);
+                // if (!$this->has($referencePath)) {
                     throw new LogicException(
                         sprintf(_('Reference path not found "%s"'), $referencePath)
                     );
-                }
+                // }
             }
 
             /**
@@ -348,6 +356,8 @@ class ConfigContext extends Config implements ConfigContextInterface
              * Unset reference node (optional)
              */
             $config->unset(ConfigContextInterface::NODE_REFERENCE);
+
+            //$this->mergeTo()
         }
     }
 

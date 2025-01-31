@@ -20,7 +20,7 @@ interface ComposerContextInterface extends ConfigInterface
     /**
      * Build composer context
      * 
-     * @return self
+     * @return static
      */
-    public function buildComposerContext(): self;
+    public function buildComposerContext(): static;
 }

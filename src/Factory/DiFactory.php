@@ -14,11 +14,14 @@
  */
 namespace Concept\Di\Factory;
 
+use Concept\Config\ConfigurableInterface;
 use Psr\Container\ContainerInterface;
 use Concept\PathAccess\PathAccessInterface;
 use Concept\Di\Factory\Context\ConfigContext;
 use Concept\Di\Factory\Context\ConfigContextInterface;
 use Concept\Container\ContainerAwareInterface;
+use Concept\DI\Factory\Attribute\Dependent;
+use Concept\DI\Factory\Attribute\Injector;
 use Concept\Di\Factory\Context\ServiceCacheInterface;
 use Concept\Di\Factory\Context\ServiceCache;
 use Concept\Di\Factory\Exception\DiFactoryException;
@@ -69,7 +72,7 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     /**
      * {@inheritDoc}
      */
-    public function withConfigContext(ConfigContextInterface $configContext): self
+    public function withConfigContext(ConfigContextInterface $configContext): static
     {
         $clone = clone $this;
         $clone->configRuntimeContext = $configContext;
@@ -102,7 +105,7 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     /**
      * {@inheritDoc}
      */
-    public function withContainer(ContainerInterface $container): self
+    public function withContainer(ContainerInterface $container): static
     {
         $this->setContainer($container);
 
@@ -195,9 +198,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * @param string $serviceId
      * @param array $args
      * 
-     * @return self
+     * @return static
     */
-    protected function initialize(string $serviceId, array $args = []): self
+    protected function initialize(string $serviceId, array $args = []): static
     {
         $this->initServiceCache($serviceId, $args)
             ->assertDependencyStack()
@@ -210,14 +213,15 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     /**
      * Resolve the service instance
      * 
-     * @return self
+     * @return static
      */
-    protected function resolveServiceInstane(): self
+    protected function resolveServiceInstane(): static
     {
         $this->buildConfigContext($this->getServiceId())
             ->instantiate()
+            ->configureService()
             ->invokeDi()
-            ->invokeDiAttribute()
+            ->invokeInjector()
             ->applyServiceLifeCycle()
             ;
 
@@ -227,12 +231,14 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     /**
      * Finalize the factory state
      * 
-     * @return self
+     * @return static
      */
-    protected function finalize(): self
+    protected function finalize(): static
     {
-        $this->removeServiceStack($this->getServiceId())
-            ;
+        // echo "<pre>";
+        // print_r($this->serviceStack);
+        // echo "\n". memory_get_usage();
+        $this->removeServiceStack($this->getServiceId());
 
         return $this;
     }
@@ -265,9 +271,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * If the class has a constructor, resolve the parameters
      * If the class is not instantiable, throw an exception
      * 
-     * @return self
+     * @return static
      */
-    protected function instantiate(): self
+    protected function instantiate(): static
     {
         $serviceInstance = null;
         $reflection = $this->getServiceReflection();
@@ -330,14 +336,39 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     }
 
     /**
+     * Configure the service
+     * If the service is configurable, configure it
+     * 
+     * @return static
+     */
+    protected function configureService(): static
+    {
+        $serviceInstance = $this->getServiceInstance();
+
+        if (!$serviceInstance instanceof ConfigurableInterface) {
+            return $this;
+        }
+
+        $serviceConfig = $this->getServiceCache()->getConfigContext();
+        
+        if ($serviceConfig->has(ConfigContextInterface::NODE_CONFIG)) {
+            $config = $serviceConfig->from(ConfigContextInterface::NODE_CONFIG);         
+            $serviceInstance->setConfig($config);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @deprecated
      * Invoke DI methods
      * Methods with the prefix ConfigContextInterface::DI_METHOD_PREFIX are invoked
      * Resolve parameters for each method
      * The method is invoked with resolved parameters
      * 
-     * @return self
+     * @return static
      */
-    protected function invokeDi(): self
+    protected function invokeDi(): static
     {
         $reflection = $this->getServiceReflection();
 
@@ -361,9 +392,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * Resolve parameters for each method
      * The method is invoked with resolved parameters
      * 
-     * @return self
+     * @return static
      */
-    protected function invokeDiAttribute(): self
+    protected function invokeInjector(): static
     {
         $reflection = $this->getServiceReflection();
         if (!method_exists($reflection, 'getAttributes')) {
@@ -371,8 +402,19 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
             return $this;
         }
 
-        foreach ($reflection->getMethods() as $method) {
-            if ($method->getAttributes(ConfigContextInterface::DI_ATTRIBUTE)) {
+        /**
+         * Do not invoke methods if class is not dependent
+         * @todo: think about logic and performance
+         */
+        // if (!$reflection->getAttributes(Dependent::class)) {
+        //     return $this;
+        // }
+
+        foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            if ($method->getAttributes(
+                ConfigContextInterface::DI_ATTRIBUTE
+                //Injector::class
+                )) {
                 $parameters = $this->resolveParameters($method);
                 $method->setAccessible(true);
                 $method->invoke(
@@ -389,9 +431,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * Apply service life cycle
      * If the service is a singleton, attach it to the container
      * 
-     * @return self
+     * @return static
      */
-    protected function applyServiceLifeCycle(): self
+    protected function applyServiceLifeCycle(): static
     {
         $preferenceConfig = $this->getServiceConfigContext($this->getServiceId());
 
@@ -509,9 +551,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
     }
 
      /**
-     * @return self
+     * @return static
      */
-    protected function buildConfigContext(string $serviceId/*, array $config = []*/): self
+    protected function buildConfigContext(string $serviceId/*, array $config = []*/): static
     {
         $this->getRuntimeContext()
             ->buildServiceContext($serviceId)
@@ -520,7 +562,7 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
              * + use bubbled preferences as overrides
              * @todo: think about it, performance
              */
-            ->merge([ConfigContextInterface::NODE_PREFERENCE => $this->overrides ? $this->overrides->asArray() : []]);
+            //->merge([ConfigContextInterface::NODE_PREFERENCE => $this->overrides ? $this->overrides->asArray() : []]);
             ;
         
 
@@ -532,9 +574,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * 
      * @param string $serviceId
      * 
-     * @return self
+     * @return static
      */
-    protected function addServiceStack(string $serviceId): self
+    protected function addServiceStack(string $serviceId): static
     {
         $this->serviceStack[$serviceId] = true;
 
@@ -558,9 +600,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * 
      * @param string $serviceId
      * 
-     * @return self
+     * @return static
      */
-    protected function removeServiceStack(string $serviceId): self
+    protected function removeServiceStack(string $serviceId): static
     {
         unset($this->serviceStack[$serviceId]);
 
@@ -571,9 +613,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * Assert factory state
      * Check if the service is not in the service stack
      * 
-     * @return self
+     * @return static
      */
-    protected function assertDependencyStack(): self
+    protected function assertDependencyStack(): static
     {
         if ($this->isInServiceStack($this->getServiceId())) {
             throw new LogicException(
@@ -590,9 +632,9 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
      * @param string|null $serviceId
      * @param array $args
      * 
-     * @return self
+     * @return static
      */
-    protected function initServiceCache(?string $serviceId = null, array $args = []): self
+    protected function initServiceCache(?string $serviceId = null, array $args = []): static
     {
         $this->getServiceCache()->reset()
             ->setServiceId($serviceId)
@@ -647,13 +689,16 @@ class DiFactory implements DiFactoryInterface, ContainerAwareInterface
 
             try {
                 $reflection = new ReflectionClass($resolvedClass);
-            } catch (\ReflectionException $e) {
+            } catch (\Throwable $e) {
                 throw new LogicException(
                     sprintf(
-                        _('Unable to create dependency: Service "%s" (resolved preference: "%s") not found'),
+                        _('Unable to create dependency: Service "%s" (resolved preference: "%s"): %s'),
                         $this->getServiceId(),
-                        $resolvedClass
-                        )
+                        $resolvedClass,
+                        $e->getMessage()
+                    ),
+                    $e->getCode(),
+                    $e
                 );
             }
 
